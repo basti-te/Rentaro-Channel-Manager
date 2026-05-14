@@ -18,6 +18,7 @@
     "db:seed": "pnpm --filter @cm/db seed",
     "db:verify": "pnpm --filter @cm/db verify",
     "db:studio": "pnpm --filter @cm/db studio",
+    "channex:smoke": "pnpm --filter @cm/channex smoke",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {

@@ -1,23 +1,73 @@
 /**
  * @cm/channex — Typed client for the Channex.io REST API (Whitelabel).
  *
- * Phase 4 will fill this in. For Phase 0 we only export the config shape so
- * other packages can already type-check against it.
+ * Usage:
+ *   const channex = createChannexClient({
+ *     baseUrl: 'https://staging.channex.io/api/v1',
+ *     apiKey: process.env.CHANNEX_API_KEY!,
+ *   });
+ *
+ *   await channex.availability.push([{
+ *     property_id, room_type_id, date_from: '2026-05-14', date_to: '2026-05-17',
+ *     availability: 0,
+ *   }]);
  */
 
-export interface ChannexConfig {
-  /** Sandbox: https://staging.channex.io/api/v1 — Prod: https://channex.io/api/v1 */
-  baseUrl: string;
-  /** Sent in the `user-api-key` header. */
-  apiKey: string;
+import { ChannexHttpClient, type ChannexConfig } from './client';
+import { PropertiesAPI } from './resources/properties';
+import { RoomTypesAPI } from './resources/room-types';
+import { RatePlansAPI } from './resources/rate-plans';
+import { AvailabilityAPI } from './resources/availability';
+import { RestrictionsAPI } from './resources/restrictions';
+import { BookingsAPI } from './resources/bookings';
+import { WebhooksAPI } from './resources/webhooks';
+
+export interface ChannexClient {
+  http: ChannexHttpClient;
+  properties: PropertiesAPI;
+  roomTypes: RoomTypesAPI;
+  ratePlans: RatePlansAPI;
+  availability: AvailabilityAPI;
+  restrictions: RestrictionsAPI;
+  bookings: BookingsAPI;
+  webhooks: WebhooksAPI;
+  /** Quick reachability check — calls GET /properties with limit=1. */
+  ping(): Promise<{ ok: true; count: number }>;
 }
 
-export function createChannexClient(config: ChannexConfig) {
-  // Stub. Implemented in Phase 4.
+export function createChannexClient(config: ChannexConfig): ChannexClient {
+  const http = new ChannexHttpClient(config);
+  const properties = new PropertiesAPI(http);
   return {
-    config,
+    http,
+    properties,
+    roomTypes: new RoomTypesAPI(http),
+    ratePlans: new RatePlansAPI(http),
+    availability: new AvailabilityAPI(http),
+    restrictions: new RestrictionsAPI(http),
+    bookings: new BookingsAPI(http),
+    webhooks: new WebhooksAPI(http),
     async ping() {
-      throw new Error('Channex client not implemented yet (Phase 4)');
+      const r = await properties.list({ limit: 1 });
+      return { ok: true as const, count: r.meta?.total ?? r.data.length };
     },
   };
 }
+
+// Re-exports for callers who want types
+export type { ChannexConfig } from './client';
+export {
+  ChannexError,
+  ChannexNetworkError,
+  ChannexClientError,
+  ChannexServerError,
+  isRetryable,
+} from './errors';
+export type { AvailabilityUpdate } from './schemas/availability';
+export type { RestrictionUpdate } from './schemas/restriction';
+export type { Booking, BookingRevision } from './schemas/booking';
+export type { Webhook, WebhookCreate, WebhookDelivery, WebhookEvent } from './schemas/webhook';
+export { BOOKING_EVENTS } from './schemas/webhook';
+export type { Property, PropertyCreate } from './schemas/property';
+export type { RoomType, RoomTypeCreate } from './schemas/room-type';
+export type { RatePlan, RatePlanCreate } from './schemas/rate-plan';
