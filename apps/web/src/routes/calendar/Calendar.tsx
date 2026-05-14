@@ -184,12 +184,14 @@ export function Calendar({
     if (!p || !onSelectRange) return;
 
     const from = Math.min(p.startDay, p.endDay);
-    const to = Math.max(p.startDay, p.endDay); // inclusive last selected day
+    const to = Math.max(p.startDay, p.endDay);
     const property = properties.find((x) => x.id === p.propertyId);
     const minStay = property?.defaultMinStay ?? 1;
 
-    // Selection length = (to - from + 1) days, but at least minStay
-    const lengthDays = Math.max(to - from + 1, minStay);
+    // Calendar convention: the LAST selected cell is the checkout day, not
+    // the last night. Dragging 8..11 means "checkin 8, checkout 11" — 3
+    // nights, not 4. A single click (from === to) falls back to minStay.
+    const lengthDays = Math.max(to - from, minStay);
 
     const checkinDate = addDays(start, from);
     const checkoutDate = addDays(checkinDate, lengthDays);
