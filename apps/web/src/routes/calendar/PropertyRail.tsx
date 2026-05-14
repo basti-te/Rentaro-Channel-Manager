@@ -29,7 +29,7 @@ export function PropertyRail({
   return (
     <div
       className={cn(
-        'sticky left-0 z-10 flex items-center gap-1 pl-1.5 pr-1',
+        'sticky left-0 z-20 flex items-center gap-1 pl-1.5 pr-1',
         'bg-surface border-r border-line-strong border-b border-line',
         'group/rail',
       )}
@@ -136,7 +136,7 @@ export function GroupHeader({ name, color, count, rightFill }: GroupHeaderProps)
   return (
     <div className="flex border-b border-line bg-canvas/80 backdrop-blur-[2px]">
       <div
-        className="sticky left-0 z-10 flex items-center gap-2 bg-canvas/95 border-r border-line"
+        className="sticky left-0 z-20 flex items-center gap-2 bg-canvas/95 border-r border-line"
         style={{ width: RAIL_W, height: 32, paddingLeft: 10 }}
       >
         <span

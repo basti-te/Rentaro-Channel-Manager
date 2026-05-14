@@ -372,11 +372,11 @@ function DayHeader({
   todayIdx: number;
 }) {
   return (
-    <div className="sticky top-0 z-20 bg-canvas/90 backdrop-blur-[3px] border-b border-line">
+    <div className="sticky top-0 z-30 bg-canvas/90 backdrop-blur-[3px] border-b border-line">
       {/* Month strip */}
       <div className="flex border-b border-line">
         <div
-          className="sticky left-0 z-10 bg-canvas border-r border-line"
+          className="sticky left-0 z-40 bg-canvas border-r border-line"
           style={{ width: RAIL_W, height: 30 }}
         />
         <div className="flex" style={{ height: 30 }}>
@@ -396,7 +396,7 @@ function DayHeader({
       {/* Day strip */}
       <div className="flex">
         <div
-          className="sticky left-0 z-10 bg-canvas border-r border-line"
+          className="sticky left-0 z-40 bg-canvas border-r border-line"
           style={{ width: RAIL_W, height: 44 }}
         />
         <div className="flex" style={{ height: 44 }}>
