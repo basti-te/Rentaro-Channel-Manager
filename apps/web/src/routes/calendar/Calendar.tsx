@@ -16,7 +16,13 @@ import {
   dayNumber,
 } from './utils';
 import { BookingBlock, type BookingSource } from './BookingBlock';
-import { PropertyRail, GroupHeader } from './PropertyRail';
+import { PropertyRail, GroupHeader, type SyncState } from './PropertyRail';
+
+export interface PropertySyncInfo {
+  state: SyncState;
+  lastSyncRelative: string | null;
+  lastError: string | null;
+}
 
 interface Group {
   id: string;
@@ -57,8 +63,13 @@ interface Props {
   groups: Group[];
   properties: Property[];
   bookings: Booking[];
+  /** Sync status per propertyId. Missing entries render as 'idle'. */
+  syncByProperty?: Map<string, PropertySyncInfo>;
   onSelectRange?: (result: SelectionResult) => void;
   onBookingClick?: (bookingId: string) => void;
+  onSyncProperty?: (propertyId: string) => void;
+  /** propertyIds whose sync-button should appear disabled (mutation in flight). */
+  pendingSyncProperties?: Set<string>;
 }
 
 interface PendingSelection {
@@ -75,8 +86,11 @@ export function Calendar({
   groups,
   properties,
   bookings,
+  syncByProperty,
   onSelectRange,
   onBookingClick,
+  onSyncProperty,
+  pendingSyncProperties,
 }: Props) {
   const days = useMemo(() => buildDays(start, dayCount), [start, dayCount]);
   const months = useMemo(() => monthSpans(days), [days]);
@@ -317,6 +331,7 @@ export function Calendar({
                       to: Math.max(pending.startDay, pending.endDay),
                     }
                   : null;
+              const sync = syncByProperty?.get(p.id);
               return (
                 <PropertyRow
                   key={p.id}
@@ -329,9 +344,12 @@ export function Calendar({
                   start={start}
                   dayCount={dayCount}
                   selectionRange={rowPending}
+                  syncInfo={sync}
+                  syncPending={pendingSyncProperties?.has(p.id) ?? false}
                   onCellPointerDown={handleCellPointerDown}
                   onCellPointerEnter={handleCellPointerEnter}
                   onBookingClick={onBookingClick}
+                  onSyncClick={onSyncProperty ? () => onSyncProperty(p.id) : undefined}
                 />
               );
             })}
@@ -432,9 +450,12 @@ function PropertyRow({
   start,
   dayCount,
   selectionRange,
+  syncInfo,
+  syncPending,
   onCellPointerDown,
   onCellPointerEnter,
   onBookingClick,
+  onSyncClick,
 }: {
   property: Property;
   groupColor: string | undefined;
@@ -445,16 +466,27 @@ function PropertyRow({
   start: Date;
   dayCount: number;
   selectionRange: { from: number; to: number } | null;
+  syncInfo: PropertySyncInfo | undefined;
+  syncPending: boolean;
   onCellPointerDown: (e: React.PointerEvent, propertyId: string, dayIdx: number) => void;
   onCellPointerEnter: (e: React.PointerEvent, propertyId: string, dayIdx: number) => void;
   onBookingClick?: (bookingId: string) => void;
+  onSyncClick?: () => void;
 }) {
   const rateLabel = formatRate(property.defaultRateCents, property.currency);
   const minStay = property.defaultMinStay;
 
   return (
     <div className="flex relative group/row">
-      <PropertyRail name={property.name} groupColor={groupColor} />
+      <PropertyRail
+        name={property.name}
+        groupColor={groupColor}
+        syncState={syncInfo?.state ?? 'idle'}
+        lastSyncRelative={syncInfo?.lastSyncRelative ?? null}
+        lastError={syncInfo?.lastError ?? null}
+        syncDisabled={syncPending}
+        onSyncClick={onSyncClick}
+      />
 
       {/* Day cells */}
       <div className="relative flex select-none" style={{ height: ROW_H }}>

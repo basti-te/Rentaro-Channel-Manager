@@ -1,15 +1,23 @@
 import { useMemo, useState } from 'react';
-import { addDays, startOfDay, format, subDays } from 'date-fns';
+import { addDays, formatDistanceToNow, startOfDay, format, subDays } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { PageHeader } from './_dashboard';
 import { Button } from '../components/ui/Button';
 import { Skeleton } from '../components/ui/Skeleton';
-import { Calendar, formatISODate, type SelectionResult } from './calendar/Calendar';
+import {
+  Calendar,
+  formatISODate,
+  type PropertySyncInfo,
+  type SelectionResult,
+} from './calendar/Calendar';
+import type { SyncState } from './calendar/PropertyRail';
 import { NewBookingDialog, type EditingBooking } from './calendar/NewBookingDialog';
 import { BookingDetailSheet } from './calendar/BookingDetailSheet';
 import { trpc } from '../lib/trpc';
+import { useSyncJobsRealtime } from '../lib/realtime';
 
 const VIEWPORT_DAYS = 60;
 
@@ -30,8 +38,50 @@ export function CalendarPage() {
     from: formatISODate(start),
     to: formatISODate(end),
   });
+  const syncStatusQ = trpc.sync.statusByProperty.useQuery();
 
   const tenant = meQ.data?.memberships[0];
+
+  // Subscribe to live sync_jobs changes for the current tenant.
+  useSyncJobsRealtime(tenant?.tenantId);
+
+  // propertyIds with an in-flight trigger mutation — disable their buttons.
+  const [pendingSyncProps, setPendingSyncProps] = useState<Set<string>>(new Set());
+  const triggerSync = trpc.sync.triggerProperty.useMutation({
+    onMutate: ({ propertyId }) => {
+      setPendingSyncProps((s) => new Set(s).add(propertyId));
+    },
+    onSettled: (_d, _e, { propertyId }) => {
+      setPendingSyncProps((s) => {
+        const next = new Set(s);
+        next.delete(propertyId);
+        return next;
+      });
+    },
+    onSuccess: () => {
+      toast.success('Sync gestartet');
+      void utils.sync.statusByProperty.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // Build the per-property sync info map for the calendar grid
+  const syncByProperty = useMemo(() => {
+    const map = new Map<string, PropertySyncInfo>();
+    for (const row of syncStatusQ.data ?? []) {
+      if (!row.propertyId) continue;
+      const state = mapDbStatusToUi(row.status);
+      const ts = row.finishedAt ?? row.startedAt ?? row.scheduledAt;
+      map.set(row.propertyId, {
+        state,
+        lastSyncRelative: ts
+          ? formatDistanceToNow(ts, { locale: de, addSuffix: true })
+          : null,
+        lastError: row.error ?? null,
+      });
+    }
+    return map;
+  }, [syncStatusQ.data]);
 
   const isLoading = groupsQ.isLoading || propsQ.isLoading || bookingsQ.isLoading;
 
@@ -140,8 +190,11 @@ export function CalendarPage() {
           groups={groupsQ.data ?? []}
           properties={properties}
           bookings={bookings}
+          syncByProperty={syncByProperty}
+          pendingSyncProperties={pendingSyncProps}
           onSelectRange={(r) => setNewBooking(r)}
           onBookingClick={(id) => setDetailId(id)}
+          onSyncProperty={(propertyId) => triggerSync.mutate({ propertyId })}
         />
       )}
 
@@ -197,4 +250,24 @@ export function CalendarPage() {
       />
     </>
   );
+}
+
+/**
+ * Translate the DB `sync_jobs.status` string into the UI's 4-state model.
+ * `queued` and `running` both render as "running" because the button never
+ * stays in a queued state long enough to be meaningful.
+ */
+function mapDbStatusToUi(status: string): SyncState {
+  switch (status) {
+    case 'queued':
+    case 'running':
+      return 'running';
+    case 'success':
+      return 'success';
+    case 'failed':
+    case 'cancelled':
+      return 'error';
+    default:
+      return 'idle';
+  }
 }

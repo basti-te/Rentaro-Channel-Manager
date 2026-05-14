@@ -2,18 +2,29 @@ import { cn } from '@cm/ui';
 import { GripVertical, RefreshCw } from 'lucide-react';
 import { ROW_H, RAIL_W } from './utils';
 
+export type SyncState = 'idle' | 'running' | 'success' | 'error';
+
 interface PropertyRailProps {
   name: string;
   groupColor?: string | null;
-  syncState?: 'idle' | 'running' | 'success' | 'error';
+  syncState?: SyncState;
+  /** Human label like "vor 2 Min." for the tooltip. */
   lastSyncRelative?: string | null;
+  /** When set, the tooltip shows this on error state. */
+  lastError?: string | null;
+  /** Disabled while a sync is in flight or trigger mutation pending. */
+  syncDisabled?: boolean;
+  onSyncClick?: () => void;
 }
 
 export function PropertyRail({
   name,
   groupColor,
   syncState = 'idle',
-  lastSyncRelative: _lastSyncRelative,
+  lastSyncRelative,
+  lastError,
+  syncDisabled,
+  onSyncClick,
 }: PropertyRailProps) {
   return (
     <div
@@ -53,25 +64,58 @@ export function PropertyRail({
       </div>
 
       {/* Sync button */}
-      <SyncButton state={syncState} />
+      <SyncButton
+        state={syncState}
+        disabled={syncDisabled}
+        lastSyncRelative={lastSyncRelative}
+        lastError={lastError}
+        onClick={onSyncClick}
+      />
     </div>
   );
 }
 
-function SyncButton({ state }: { state: 'idle' | 'running' | 'success' | 'error' }) {
+function SyncButton({
+  state,
+  disabled,
+  lastSyncRelative,
+  lastError,
+  onClick,
+}: {
+  state: SyncState;
+  disabled?: boolean;
+  lastSyncRelative?: string | null;
+  lastError?: string | null;
+  onClick?: () => void;
+}) {
+  const title = (() => {
+    if (state === 'running') return 'Synchronisiere…';
+    if (state === 'error') return `Fehler: ${lastError ?? 'unbekannt'}`;
+    if (state === 'success' && lastSyncRelative) return `Synchronisiert · ${lastSyncRelative}`;
+    return 'Jetzt synchronisieren';
+  })();
+
   return (
     <button
       type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!disabled) onClick?.();
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      disabled={disabled || state === 'running'}
       className={cn(
         'flex-shrink-0 h-7 w-7 rounded-md flex items-center justify-center',
         'transition-[background-color,color] duration-150',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
         state === 'idle' && 'text-muted hover:text-ink hover:bg-sunken',
-        state === 'running' && 'text-brand bg-brand-soft',
-        state === 'success' && 'text-positive bg-positive-soft',
-        state === 'error' && 'text-danger bg-danger-soft',
+        state === 'running' && 'text-brand bg-brand-soft cursor-wait',
+        state === 'success' && 'text-positive bg-positive-soft hover:bg-positive-soft/80',
+        state === 'error' && 'text-danger bg-danger-soft hover:bg-danger-soft/80',
+        disabled && 'opacity-60 cursor-not-allowed',
       )}
-      aria-label="Synchronize"
-      title="Synchronize availability"
+      aria-label={title}
+      title={title}
     >
       <RefreshCw
         className={cn('h-3.5 w-3.5', state === 'running' && 'animate-spin')}
@@ -85,7 +129,7 @@ interface GroupHeaderProps {
   name: string;
   color: string;
   count: number;
-  rightFill?: number; // width of the day rail to fill
+  rightFill?: number;
 }
 
 export function GroupHeader({ name, color, count, rightFill }: GroupHeaderProps) {
@@ -105,7 +149,6 @@ export function GroupHeader({ name, color, count, rightFill }: GroupHeaderProps)
         </h3>
         <span className="num text-[10px] text-whisper flex-shrink-0">{count}</span>
       </div>
-      {/* Visual continuation rule across the scroll area */}
       <div
         aria-hidden
         className="flex-1 h-[32px]"
