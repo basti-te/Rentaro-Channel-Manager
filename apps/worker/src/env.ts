@@ -15,6 +15,18 @@ const Env = z.object({
   CHANNEX_API_KEY: z.string().min(1),
   CHANNEX_WEBHOOK_SECRET: z.string().min(1),
   APP_URL: z.string().url().default('http://localhost:5173'),
+
+  // Inngest — all optional in dev (cli auto-detects local mode).
+  // Coerce empty strings to undefined so a placeholder `KEY=` line in
+  // .env.local doesn't trip the url() validator.
+  INNGEST_EVENT_KEY: z.string().optional().transform((v) => v || undefined),
+  INNGEST_SIGNING_KEY: z.string().optional().transform((v) => v || undefined),
+  INNGEST_BASE_URL: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(z.string().url().optional()),
+  INNGEST_APP_ID: z.string().optional().transform((v) => v || undefined),
 });
 
 const parsed = Env.safeParse(process.env);

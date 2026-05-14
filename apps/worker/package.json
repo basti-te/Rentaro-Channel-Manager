@@ -19,6 +19,7 @@
     "@hono/node-server": "^1.13.1",
     "@trpc/server": "^11.0.0-rc.477",
     "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.36.4",
     "hono": "^4.6.3",
     "inngest": "^3.27.0",
     "superjson": "^2.2.1",

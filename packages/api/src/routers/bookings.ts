@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, eq, gte, inArray, lte, lt, gt, ne } from 'drizzle-orm';
-import { bookings, properties, tenants, syncJobs } from '@cm/db';
+import { bookings, properties, tenants } from '@cm/db';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
 
 /** YYYY-MM-DD validator. */
@@ -68,6 +68,26 @@ const EXTERNAL_SOURCES = ['airbnb', 'booking_com', 'expedia', 'other_ota'] as co
 type ExternalSource = (typeof EXTERNAL_SOURCES)[number];
 const isExternalSource = (s: string): s is ExternalSource =>
   (EXTERNAL_SOURCES as readonly string[]).includes(s);
+
+/**
+ * Compute the date range that needs re-syncing after a booking change.
+ * Returns YYYY-MM-DD strings with the checkout exclusive — matches the
+ * Inngest event contract.
+ *
+ * Pass either one or two booking date pairs (old + new) and we'll return
+ * the smallest range that covers both.
+ */
+function unionRange(
+  ...pairs: Array<{ checkin: string; checkout: string }>
+): { from: string; to: string } {
+  let from = pairs[0]!.checkin;
+  let to = pairs[0]!.checkout;
+  for (const p of pairs.slice(1)) {
+    if (p.checkin < from) from = p.checkin;
+    if (p.checkout > to) to = p.checkout;
+  }
+  return { from, to };
+}
 
 export const bookingsRouter = router({
   /**
@@ -233,6 +253,18 @@ export const bookingsRouter = router({
           autoReviewEnabled: input.isBlock ? false : (input.autoReviewEnabled ?? true),
         })
         .returning();
+
+      // Fire-and-forget Channex sync. Worker picks it up via Inngest.
+      await ctx.inngest.send({
+        name: 'apartment/availability.sync',
+        data: {
+          tenantId: ctx.tenantId!,
+          propertyId: input.propertyId,
+          ...unionRange({ checkin: input.checkin, checkout: input.checkout }),
+          reason: input.isBlock ? 'block.created' : 'booking.created',
+        },
+      });
+
       return row;
     }),
 
@@ -296,6 +328,7 @@ export const bookingsRouter = router({
           .set(patch)
           .where(and(eq(bookings.id, input.id), eq(bookings.tenantId, ctx.tenantId!)))
           .returning();
+        // No sync needed — neither field affects Channex inventory.
         return row;
       }
 
@@ -380,6 +413,46 @@ export const bookingsRouter = router({
         })
         .where(and(eq(bookings.id, input.id), eq(bookings.tenantId, ctx.tenantId!)))
         .returning();
+
+      // Re-sync the union of old and new date ranges so cells that were
+      // previously occupied but no longer are get released.
+      const oldRange = { checkin: current.checkin, checkout: current.checkout };
+      const newRange = { checkin: next.checkin, checkout: next.checkout };
+
+      // If the property changed too, sync both properties.
+      if (next.propertyId !== current.propertyId) {
+        await ctx.inngest.send([
+          {
+            name: 'apartment/availability.sync',
+            data: {
+              tenantId: ctx.tenantId!,
+              propertyId: current.propertyId,
+              ...unionRange(oldRange),
+              reason: 'booking.moved.from',
+            },
+          },
+          {
+            name: 'apartment/availability.sync',
+            data: {
+              tenantId: ctx.tenantId!,
+              propertyId: next.propertyId,
+              ...unionRange(newRange),
+              reason: 'booking.moved.to',
+            },
+          },
+        ]);
+      } else {
+        await ctx.inngest.send({
+          name: 'apartment/availability.sync',
+          data: {
+            tenantId: ctx.tenantId!,
+            propertyId: next.propertyId,
+            ...unionRange(oldRange, newRange),
+            reason: 'booking.updated',
+          },
+        });
+      }
+
       return row;
     }),
 
@@ -409,8 +482,9 @@ export const bookingsRouter = router({
         propertyId: current.propertyId,
       };
 
-      if (isExternalSource(current.source)) {
-        // Soft cancel + queue an availability push
+      const wasExternal = isExternalSource(current.source);
+      if (wasExternal) {
+        // Soft cancel — preserves audit trail
         await ctx.db
           .update(bookings)
           .set({ status: 'cancelled' })
@@ -422,24 +496,21 @@ export const bookingsRouter = router({
           .where(and(eq(bookings.id, input.id), eq(bookings.tenantId, ctx.tenantId!)));
       }
 
-      // Enqueue a sync job for the released availability. Phase 5's worker
-      // picks this up and pushes availability=1 for the date range to Channex.
-      await ctx.db.insert(syncJobs).values({
-        tenantId: ctx.tenantId!,
-        propertyId: current.propertyId,
-        bookingId: null, // booking may have been deleted
-        type: 'push_availability',
-        status: 'queued',
-        payload: {
-          action: 'release',
-          ...releaseDates,
-          reason: isExternalSource(current.source) ? 'external_cancel' : 'internal_delete',
+      // Push availability for the released range. The Inngest worker reads
+      // active bookings overlapping the range and computes the new state, so
+      // releasing one booking that overlaps others still leaves the
+      // overlapping nights at availability=0.
+      await ctx.inngest.send({
+        name: 'apartment/availability.sync',
+        data: {
+          tenantId: ctx.tenantId!,
+          propertyId: releaseDates.propertyId,
+          from: releaseDates.from,
+          to: releaseDates.to,
+          reason: wasExternal ? 'external.cancelled' : 'booking.deleted',
         },
       });
 
-      return {
-        id: input.id,
-        cancelled: isExternalSource(current.source),
-      };
+      return { id: input.id, cancelled: wasExternal };
     }),
 });

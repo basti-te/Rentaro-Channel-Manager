@@ -3,8 +3,10 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
+import { serve as serveInngest } from 'inngest/hono';
 import { appRouter, createContext } from '@cm/api';
 import { env } from './env';
+import { inngest, inngestFunctions } from './inngest';
 
 const app = new Hono();
 
@@ -19,6 +21,14 @@ app.use(
 );
 
 app.get('/health', (c) => c.json({ ok: true, ts: new Date().toISOString() }));
+
+// ── Inngest serve endpoint ───────────────────────────────────────────────────
+// The inngest-cli dev server (npx inngest-cli@latest dev) auto-discovers
+// this URL and runs the function dashboard at http://localhost:8288.
+app.on(['GET', 'POST', 'PUT'], '/api/inngest', serveInngest({
+  client: inngest,
+  functions: inngestFunctions,
+}));
 
 // ── tRPC adapter ─────────────────────────────────────────────────────────────
 app.all('/trpc/*', async (c) => {
