@@ -189,9 +189,15 @@ export function Calendar({
     const minStay = property?.defaultMinStay ?? 1;
 
     // Calendar convention: the LAST selected cell is the checkout day, not
-    // the last night. Dragging 8..11 means "checkin 8, checkout 11" — 3
-    // nights, not 4. A single click (from === to) falls back to minStay.
-    const lengthDays = Math.max(to - from, minStay);
+    // the last night. Dragging 8..11 = checkin 8, checkout 11 (3 nights).
+    //
+    // Drag is explicit — honor what the user dragged, no auto-bump to
+    // minStay. Manual bookings often need to override the default min-stay
+    // (it'll come from PriceLabs later).
+    //
+    // A single click (from === to) expresses no length, so we fall back to
+    // minStay as a sensible suggestion. The user can shorten in the dialog.
+    const lengthDays = from === to ? minStay : Math.max(to - from, 1);
 
     const checkinDate = addDays(start, from);
     const checkoutDate = addDays(checkinDate, lengthDays);

@@ -382,9 +382,13 @@ export function NewBookingDialog({
                 value={checkin}
                 onChange={(e) => {
                   setCheckin(e.target.value);
+                  // If the new checkin makes checkout invalid, nudge checkout
+                  // to checkin+1 (smallest valid range). The min-stay rule
+                  // is a soft warning — the user may legitimately want a
+                  // shorter stay than the default.
                   if (checkout && checkout <= e.target.value) {
                     setCheckout(
-                      format(addDays(new Date(e.target.value), Math.max(1, minStay)), 'yyyy-MM-dd'),
+                      format(addDays(new Date(e.target.value), 1), 'yyyy-MM-dd'),
                     );
                   }
                 }}
