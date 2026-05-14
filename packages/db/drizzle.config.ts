@@ -1,5 +1,10 @@
-import 'dotenv/config';
+import { config } from 'dotenv';
 import { defineConfig } from 'drizzle-kit';
+import { resolve } from 'node:path';
+
+// drizzle-kit invokes this script with cwd = packages/db.
+// Go up two levels to the monorepo root to find .env.local.
+config({ path: resolve(process.cwd(), '../../.env.local') });
 
 const url = process.env.DATABASE_URL_DIRECT ?? process.env.DATABASE_URL;
 if (!url) {

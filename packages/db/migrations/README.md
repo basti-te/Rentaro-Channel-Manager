@@ -6,9 +6,11 @@ Drizzle generates table migrations into this folder when you run:
 pnpm db:generate
 ```
 
-The numbered files are auto-managed. **`9999_rls_policies.sql`** is hand-written
-and applies Row-Level Security after the tables exist. Don't touch the
-auto-generated ones; they're committed for reproducibility.
+The numbered files are auto-managed. **Hand-written SQL for RLS, triggers,
+and other non-introspectable Postgres objects lives in `../post-migrate/`**
+and is applied right after `drizzle-kit migrate` by the `apply-post-migrate.ts`
+script. Don't touch the auto-generated migration files; they're committed for
+reproducibility.
 
 ## Apply to a database
 

@@ -11,7 +11,9 @@
   },
   "scripts": {
     "generate": "drizzle-kit generate",
-    "migrate": "drizzle-kit migrate",
+    "migrate": "drizzle-kit migrate && tsx scripts/apply-post-migrate.ts",
+    "migrate:tables-only": "drizzle-kit migrate",
+    "migrate:post": "tsx scripts/apply-post-migrate.ts",
     "push": "drizzle-kit push",
     "studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
@@ -22,7 +24,10 @@
     "postgres": "^3.4.5"
   },
   "devDependencies": {
+    "@types/node": "^22.7.5",
+    "dotenv": "^16.4.5",
     "drizzle-kit": "^0.28.1",
+    "tsx": "^4.19.1",
     "typescript": "^5.5.4"
   }
 }
