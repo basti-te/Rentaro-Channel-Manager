@@ -6,6 +6,7 @@ import {
   Calendar as CalIcon,
   Clock,
   Mail,
+  Pencil,
   Phone,
   Star,
   Trash2,
@@ -48,6 +49,7 @@ interface Props {
   propertyName: string | null;
   onClose: () => void;
   onDeleted: () => void;
+  onEdit?: (booking: Booking) => void;
 }
 
 const SOURCE_META: Record<
@@ -72,7 +74,13 @@ const STATUS_META: Record<string, { label: string; className: string }> = {
   blocked:      { label: 'Geblockt',       className: 'text-muted' },
 };
 
-export function BookingDetailSheet({ booking, propertyName, onClose, onDeleted }: Props) {
+export function BookingDetailSheet({
+  booking,
+  propertyName,
+  onClose,
+  onDeleted,
+  onEdit,
+}: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // ESC to close + cleanup confirm state
@@ -349,31 +357,47 @@ export function BookingDetailSheet({ booking, propertyName, onClose, onDeleted }
         {/* Footer actions */}
         <div className="border-t border-line px-6 py-4">
           {confirmDelete ? (
-            <div className="flex items-center gap-3">
-              <span className="flex-1 text-[12.5px] text-ink-soft">
-                Wirklich löschen?
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
-                Abbrechen
-              </Button>
+            <div className="space-y-2">
+              <p className="text-[12.5px] text-ink-soft leading-snug">
+                {isExternal
+                  ? 'Buchung als storniert markieren? Die Tage werden auf den verbundenen Plattformen wieder freigegeben (Phase 5 führt den Sync aus).'
+                  : 'Wirklich löschen?'}
+              </p>
+              <div className="flex items-center justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+                  Abbrechen
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  loading={del.isPending}
+                  onClick={() => del.mutate({ id: booking.id })}
+                >
+                  {isExternal ? 'Stornieren' : 'Löschen'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
               <Button
                 variant="danger"
                 size="sm"
-                loading={del.isPending}
-                onClick={() => del.mutate({ id: booking.id })}
+                onClick={() => setConfirmDelete(true)}
+                iconLeft={<Trash2 className="h-3.5 w-3.5" />}
               >
-                Löschen
+                {isExternal ? 'Stornieren' : 'Löschen'}
               </Button>
+              {onEdit && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onEdit(booking)}
+                  iconLeft={<Pencil className="h-3.5 w-3.5" />}
+                >
+                  Bearbeiten
+                </Button>
+              )}
             </div>
-          ) : (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => setConfirmDelete(true)}
-              iconLeft={<Trash2 className="h-3.5 w-3.5" />}
-            >
-              Löschen
-            </Button>
           )}
         </div>
       </aside>

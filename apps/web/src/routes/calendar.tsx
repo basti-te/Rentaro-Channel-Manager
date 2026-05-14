@@ -7,7 +7,7 @@ import { PageHeader } from './_dashboard';
 import { Button } from '../components/ui/Button';
 import { Skeleton } from '../components/ui/Skeleton';
 import { Calendar, formatISODate, type SelectionResult } from './calendar/Calendar';
-import { NewBookingDialog } from './calendar/NewBookingDialog';
+import { NewBookingDialog, type EditingBooking } from './calendar/NewBookingDialog';
 import { BookingDetailSheet } from './calendar/BookingDetailSheet';
 import { trpc } from '../lib/trpc';
 
@@ -20,6 +20,7 @@ export function CalendarPage() {
 
   const [newBooking, setNewBooking] = useState<SelectionResult | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<EditingBooking | null>(null);
 
   const utils = trpc.useUtils();
   const meQ = trpc.me.current.useQuery();
@@ -145,16 +146,24 @@ export function CalendarPage() {
       )}
 
       <NewBookingDialog
-        open={!!newBooking}
+        open={!!newBooking || !!editing}
         initial={newBooking}
+        editing={editing}
         properties={properties}
         defaultCityTaxRateBp={tenant?.defaultCityTaxRateBp ?? 500}
         defaultCheckinTime={tenant?.defaultCheckinTime ?? '15:00'}
         defaultCheckoutTime={tenant?.defaultCheckoutTime ?? '11:00'}
-        onClose={() => setNewBooking(null)}
+        onClose={() => {
+          setNewBooking(null);
+          setEditing(null);
+        }}
         onCreated={() => {
           utils.bookings.listByRange.invalidate();
           setNewBooking(null);
+        }}
+        onUpdated={() => {
+          utils.bookings.listByRange.invalidate();
+          setEditing(null);
         }}
       />
 
@@ -164,6 +173,25 @@ export function CalendarPage() {
         onClose={() => setDetailId(null)}
         onDeleted={() => {
           utils.bookings.listByRange.invalidate();
+          setDetailId(null);
+        }}
+        onEdit={(b) => {
+          setEditing({
+            id: b.id,
+            source: b.source,
+            propertyId: b.propertyId,
+            checkin: b.checkin,
+            checkout: b.checkout,
+            checkinTime: b.checkinTime,
+            checkoutTime: b.checkoutTime,
+            guestCount: b.guestCount,
+            guestName: b.guestName,
+            guestPhone: b.guestPhone,
+            nightlyRateCents: b.nightlyRateCents,
+            cleaningFeeCents: b.cleaningFeeCents,
+            notes: b.notes,
+            autoReviewEnabled: b.autoReviewEnabled,
+          });
           setDetailId(null);
         }}
       />

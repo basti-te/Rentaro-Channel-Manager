@@ -10,6 +10,7 @@ import { Label } from '../../components/ui/Label';
 import { Switch } from '../../components/ui/Switch';
 import { trpc } from '../../lib/trpc';
 import { cn } from '@cm/ui';
+import type { BookingSource } from './BookingBlock';
 
 type Mode = 'guest' | 'block';
 
@@ -22,13 +23,34 @@ interface Property {
   defaultMinStay: number;
 }
 
+/** Subset of a Booking needed to pre-fill the edit form. */
+export interface EditingBooking {
+  id: string;
+  source: BookingSource;
+  propertyId: string;
+  checkin: string;
+  checkout: string;
+  checkinTime?: string | null;
+  checkoutTime?: string | null;
+  guestCount?: number | null;
+  guestName?: string | null;
+  guestPhone?: string | null;
+  nightlyRateCents?: bigint | null;
+  cleaningFeeCents?: bigint | null;
+  notes?: string | null;
+  autoReviewEnabled?: boolean | null;
+}
+
 interface Props {
   open: boolean;
+  /** Pre-filled selection from the calendar — used in CREATE mode. */
   initial: {
     propertyId: string;
     checkin: string;
     checkout: string;
   } | null;
+  /** When present, the dialog is in EDIT mode and fields are pre-filled. */
+  editing?: EditingBooking | null;
   properties: Property[];
   /** Tenant-default city-tax rate in basis points (e.g. 500 = 5%). */
   defaultCityTaxRateBp?: number;
@@ -36,18 +58,28 @@ interface Props {
   defaultCheckoutTime?: string;
   onClose: () => void;
   onCreated: () => void;
+  onUpdated?: () => void;
 }
 
 export function NewBookingDialog({
   open,
   initial,
+  editing,
   properties,
   defaultCityTaxRateBp = 500,
   defaultCheckinTime = '15:00',
   defaultCheckoutTime = '11:00',
   onClose,
   onCreated,
+  onUpdated,
 }: Props) {
+  const isEdit = !!editing;
+  const externalSource = editing
+    ? (editing.source === 'airbnb' ||
+        editing.source === 'booking_com' ||
+        editing.source === 'expedia' ||
+        editing.source === 'other_ota')
+    : false;
   const [mode, setMode] = useState<Mode>('guest');
   const [propertyId, setPropertyId] = useState('');
   const [checkin, setCheckin] = useState('');
@@ -68,9 +100,31 @@ export function NewBookingDialog({
   const [notes, setNotes] = useState('');
   const [autoReview, setAutoReview] = useState(true);
 
-  // Reset on open
+  // Reset on open — handles both CREATE (from initial) and EDIT (from editing)
   useEffect(() => {
-    if (!open || !initial) return;
+    if (!open) return;
+
+    if (editing) {
+      // EDIT mode — fill all fields from the existing booking
+      setMode(editing.source === 'block' ? 'block' : 'guest');
+      setPropertyId(editing.propertyId);
+      setCheckin(editing.checkin);
+      setCheckout(editing.checkout);
+      setCheckinTime(editing.checkinTime ?? defaultCheckinTime);
+      setCheckoutTime(editing.checkoutTime ?? defaultCheckoutTime);
+      setGuestCount(String(editing.guestCount ?? 1));
+      setGuestName(editing.guestName ?? '');
+      setGuestPhone(editing.guestPhone ?? '');
+      setNotes(editing.notes ?? '');
+      setAutoReview(editing.autoReviewEnabled ?? true);
+      setNightlyEuro(centsToEuroString(editing.nightlyRateCents ?? null));
+      setCleaningEuro(centsToEuroString(editing.cleaningFeeCents ?? null));
+      return;
+    }
+
+    if (!initial) return;
+
+    // CREATE mode — apply selection + property defaults
     setMode('guest');
     setPropertyId(initial.propertyId);
     setCheckin(initial.checkin);
@@ -86,7 +140,7 @@ export function NewBookingDialog({
     const prop = properties.find((p) => p.id === initial.propertyId);
     setNightlyEuro(centsToEuroString(prop?.defaultRateCents ?? null));
     setCleaningEuro(centsToEuroString(prop?.defaultCleaningFeeCents ?? null));
-  }, [open, initial, properties, defaultCheckinTime, defaultCheckoutTime]);
+  }, [open, initial, editing, properties, defaultCheckinTime, defaultCheckoutTime]);
 
   const nights = useMemo(() => {
     if (!checkin || !checkout) return 0;
@@ -130,6 +184,16 @@ export function NewBookingDialog({
     onError: (e) => toast.error(e.message),
   });
 
+  const update = trpc.bookings.update.useMutation({
+    onSuccess: () => {
+      toast.success('Buchung aktualisiert');
+      onUpdated?.();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const submitting = create.isPending || update.isPending;
+
   // ESC to close
   useEffect(() => {
     if (!open) return;
@@ -158,6 +222,37 @@ export function NewBookingDialog({
       return Math.min(50, n);
     })();
 
+    // ── EDIT MODE: dispatch update mutation ────────────────────────────
+    if (isEdit && editing) {
+      if (externalSource) {
+        // External: only notes + auto-review can be changed
+        update.mutate({
+          id: editing.id,
+          notes: notes.trim() || null,
+          autoReviewEnabled: autoReview,
+        });
+        return;
+      }
+      // Internal/block: full update
+      update.mutate({
+        id: editing.id,
+        propertyId,
+        checkin,
+        checkout,
+        checkinTime,
+        checkoutTime,
+        guestCount: parsedGuestCount,
+        guestName: mode === 'guest' ? (guestName.trim() || null) : null,
+        guestPhone: mode === 'guest' ? (guestPhone.trim() || null) : null,
+        nightlyRateCents: mode === 'guest' ? nightlyCents : null,
+        cleaningFeeCents: mode === 'guest' ? cleaningCents : null,
+        notes: notes.trim() || null,
+        autoReviewEnabled: mode === 'guest' ? autoReview : false,
+      });
+      return;
+    }
+
+    // ── CREATE MODE ────────────────────────────────────────────────────
     create.mutate({
       propertyId,
       checkin,
@@ -176,7 +271,7 @@ export function NewBookingDialog({
     });
   }
 
-  if (!open || !initial) return null;
+  if (!open || (!initial && !editing)) return null;
 
   return (
     <div
@@ -195,47 +290,88 @@ export function NewBookingDialog({
         {/* Header */}
         <div className="px-6 pt-6 pb-2">
           <h2 className="display text-[22px] font-medium text-ink">
-            {mode === 'block' ? 'Sperre anlegen' : 'Neue Buchung'}
+            {isEdit
+              ? externalSource
+                ? 'OTA-Buchung bearbeiten'
+                : mode === 'block'
+                  ? 'Sperre bearbeiten'
+                  : 'Buchung bearbeiten'
+              : mode === 'block'
+                ? 'Sperre anlegen'
+                : 'Neue Buchung'}
           </h2>
           <p className="mt-1 text-[13px] text-muted">
-            Lokal speichern — Channex-Sync folgt in Phase 5.
+            {externalSource
+              ? 'Nur Notiz und Auto-Bewertung änderbar — Rest verwaltet die OTA.'
+              : 'Lokal speichern — Channex-Sync folgt in Phase 5.'}
           </p>
         </div>
 
         <form onSubmit={submit} className="px-6 pb-6 pt-3 space-y-4">
-          {/* Mode toggle */}
-          <div className="grid grid-cols-2 gap-2 p-1 bg-sunken rounded-lg">
-            <ModeTab
-              active={mode === 'guest'}
-              onClick={() => setMode('guest')}
-              icon={<User className="h-3.5 w-3.5" />}
-              label="Mit Gast"
-            />
-            <ModeTab
-              active={mode === 'block'}
-              onClick={() => setMode('block')}
-              icon={<Lock className="h-3.5 w-3.5" />}
-              label="Nur Sperre"
-            />
-          </div>
+          {/* Mode toggle — only in CREATE mode (editing mode is locked to source) */}
+          {!isEdit && (
+            <div className="grid grid-cols-2 gap-2 p-1 bg-sunken rounded-lg">
+              <ModeTab
+                active={mode === 'guest'}
+                onClick={() => setMode('guest')}
+                icon={<User className="h-3.5 w-3.5" />}
+                label="Mit Gast"
+              />
+              <ModeTab
+                active={mode === 'block'}
+                onClick={() => setMode('block')}
+                icon={<Lock className="h-3.5 w-3.5" />}
+                label="Nur Sperre"
+              />
+            </div>
+          )}
 
-          {/* Apartment */}
-          <div className="space-y-1.5">
-            <Label htmlFor="bk-apt">Apartment</Label>
-            <select
-              id="bk-apt"
-              value={propertyId}
-              onChange={(e) => setPropertyId(e.target.value)}
-              className="h-10 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none"
-            >
-              {properties.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* External summary — shown instead of editable fields for OTA bookings */}
+          {externalSource && editing && (
+            <div className="rounded-md border border-line bg-canvas/60 px-4 py-3 space-y-1.5 text-[12.5px]">
+              <SummaryRow label="Apartment" value={
+                properties.find((p) => p.id === editing.propertyId)?.name ?? '—'
+              } />
+              <SummaryRow
+                label="Aufenthalt"
+                value={
+                  <>
+                    <span className="num">{editing.checkin}</span>
+                    {' → '}
+                    <span className="num">{editing.checkout}</span>
+                  </>
+                }
+              />
+              {editing.guestName && (
+                <SummaryRow label="Gast" value={editing.guestName} />
+              )}
+              {editing.guestCount != null && editing.guestCount > 0 && (
+                <SummaryRow label="Gäste" value={<span className="num">{editing.guestCount}</span>} />
+              )}
+            </div>
+          )}
 
+          {/* Editable apartment selector — hidden for external bookings */}
+          {!externalSource && (
+            <div className="space-y-1.5">
+              <Label htmlFor="bk-apt">Apartment</Label>
+              <select
+                id="bk-apt"
+                value={propertyId}
+                onChange={(e) => setPropertyId(e.target.value)}
+                className="h-10 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none"
+              >
+                {properties.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {!externalSource && (
+          <>
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -418,6 +554,8 @@ export function NewBookingDialog({
               )}
             </>
           )}
+          </>
+          )}
 
           {/* Notes */}
           <div className="space-y-1.5">
@@ -455,10 +593,18 @@ export function NewBookingDialog({
             <Button
               type="submit"
               variant="brand"
-              loading={create.isPending}
-              disabled={!propertyId || !checkin || !checkout || nights <= 0}
+              loading={submitting}
+              disabled={
+                externalSource
+                  ? false
+                  : !propertyId || !checkin || !checkout || nights <= 0
+              }
             >
-              {mode === 'block' ? 'Sperren' : 'Speichern'}
+              {isEdit
+                ? 'Aktualisieren'
+                : mode === 'block'
+                  ? 'Sperren'
+                  : 'Speichern'}
             </Button>
           </div>
         </form>
@@ -557,6 +703,15 @@ function euroStringToCents(s: string): number | null {
   const v = parseFloat(trimmed);
   if (!Number.isFinite(v) || v < 0) return null;
   return Math.round(v * 100);
+}
+
+function SummaryRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-muted">{label}</span>
+      <span className="text-ink">{value}</span>
+    </div>
+  );
 }
 
 function formatEuro(cents: number): string {
