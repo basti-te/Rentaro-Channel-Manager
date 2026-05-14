@@ -7,6 +7,7 @@ import { serve as serveInngest } from 'inngest/hono';
 import { appRouter, createContext } from '@cm/api';
 import { env } from './env';
 import { inngest, inngestFunctions } from './inngest';
+import { channexWebhook } from './webhooks/channex';
 
 const app = new Hono();
 
@@ -49,15 +50,8 @@ app.all('/trpc/*', async (c) => {
   });
 });
 
-// ── Webhooks (stubs — wired up in Phase 6) ───────────────────────────────────
-app.post('/api/webhooks/channex/:secret', (c) => {
-  const secret = c.req.param('secret');
-  if (secret !== env.CHANNEX_WEBHOOK_SECRET) {
-    return c.json({ error: 'forbidden' }, 403);
-  }
-  // TODO Phase 6: enqueue Inngest job, ACK immediately
-  return c.json({ received: true });
-});
+// ── Channex inbound webhooks ─────────────────────────────────────────────────
+app.route('/api/webhooks/channex', channexWebhook);
 
 const port = env.PORT;
 console.log(`→ API server on http://localhost:${port}`);

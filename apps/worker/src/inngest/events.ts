@@ -51,4 +51,25 @@ export type Events = {
       reason?: string;
     };
   };
+
+  /**
+   * Pull unacknowledged booking revisions from Channex and persist them.
+   * Fired by the Channex global webhook endpoint on booking_new /
+   * booking_modification / booking_cancellation events.
+   *
+   * The job ignores the webhook payload (Channex docs: payloads may arrive
+   * out of order) and walks the Booking Revisions Feed instead — that's
+   * the authoritative, at-least-once source.
+   *
+   * Idempotent: bookings.channex_booking_id is UNIQUE, so duplicate
+   * deliveries upsert harmlessly.
+   */
+  'channex/booking.ingest': {
+    data: {
+      /** Where the trigger came from, for telemetry. */
+      reason: string;
+      /** Optional hint — the booking_id from the webhook, helps grep logs. */
+      hintBookingId?: string;
+    };
+  };
 };
