@@ -67,16 +67,17 @@ export const syncRouter = router({
       toDate.setUTCDate(toDate.getUTCDate() + TRIGGER_FORWARD_DAYS);
       const to = toDate.toISOString().slice(0, 10);
 
-      await ctx.inngest.send({
-        name: 'apartment/availability.sync',
-        data: {
-          tenantId: ctx.tenantId!,
-          propertyId: input.propertyId,
-          from,
-          to,
-          reason: 'user.manual',
-        },
-      });
+      const data = {
+        tenantId: ctx.tenantId!,
+        propertyId: input.propertyId,
+        from,
+        to,
+        reason: 'user.manual',
+      };
+      await ctx.inngest.send([
+        { name: 'apartment/availability.sync', data },
+        { name: 'apartment/rates.sync', data },
+      ]);
 
       return { ok: true, from, to };
     }),

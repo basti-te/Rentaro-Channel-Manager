@@ -34,6 +34,15 @@ export type AppEvents = {
       reason?: string;
     };
   };
+  'apartment/rates.sync': {
+    data: {
+      tenantId: string;
+      propertyId: string;
+      from: string;
+      to: string;
+      reason?: string;
+    };
+  };
 };
 
 type AppInngest = ReturnType<typeof getInngest>;

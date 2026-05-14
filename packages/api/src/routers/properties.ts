@@ -94,6 +94,25 @@ export const propertiesRouter = router({
         .where(and(eq(properties.id, id), eq(properties.tenantId, ctx.tenantId!)))
         .returning();
       if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
+
+      // Rate or min-stay touched? Push to Channex over the next ~6 months.
+      if (input.defaultRateCents !== undefined || input.defaultMinStay !== undefined) {
+        const today = new Date();
+        const from = today.toISOString().slice(0, 10);
+        const toDate = new Date(today);
+        toDate.setUTCDate(toDate.getUTCDate() + 180);
+        await ctx.inngest.send({
+          name: 'apartment/rates.sync',
+          data: {
+            tenantId: ctx.tenantId!,
+            propertyId: id,
+            from,
+            to: toDate.toISOString().slice(0, 10),
+            reason: 'property.updated',
+          },
+        });
+      }
+
       return row;
     }),
 

@@ -33,4 +33,22 @@ export type Events = {
       reason?: string;
     };
   };
+
+  /**
+   * Push the apartment's nightly rate + min-stay to Channex over a date
+   * range. Fired when properties.defaultRateCents or defaultMinStay changes,
+   * and on manual sync.
+   *
+   * Per-day rate overrides (weekends, holidays) come in a future phase via a
+   * dedicated `rate_overrides` table.
+   */
+  'apartment/rates.sync': {
+    data: {
+      tenantId: string;
+      propertyId: string;
+      from: string;
+      to: string;
+      reason?: string;
+    };
+  };
 };
