@@ -119,3 +119,4 @@ tenants ─┬─ memberships ─ users
 - [0003 — Drizzle over Prisma](adr/0003-drizzle-over-prisma.md)
 - [0004 — Inngest over BullMQ](adr/0004-inngest-over-bullmq.md)
 - [0005 — Vite SPA over Next.js](adr/0005-vite-over-nextjs.md)
+- [0006 — PriceLabs ↔ Channex direct (no custom connector)](adr/0006-pricelabs-direct-channex.md)
