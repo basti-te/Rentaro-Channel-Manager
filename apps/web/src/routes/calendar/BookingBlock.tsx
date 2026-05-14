@@ -21,6 +21,8 @@ interface Props {
   guestName?: string | null;
   priceCents?: bigint | number | null;
   currency?: string | null;
+  /** Called when the block is clicked or activated via keyboard. */
+  onClick?: () => void;
 }
 
 const sourceStyles: Record<
@@ -80,6 +82,7 @@ export function BookingBlock({
   guestName,
   priceCents,
   currency,
+  onClick,
 }: Props) {
   const s = sourceStyles[source];
   const isBlock = source === 'block';
@@ -95,9 +98,20 @@ export function BookingBlock({
     <div
       role="button"
       tabIndex={0}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick?.();
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
       className={cn(
         'absolute top-[6px] bottom-[6px] flex items-center gap-2 px-2',
-        'border overflow-hidden cursor-pointer',
+        'border overflow-hidden cursor-pointer z-10',
         // Rounded only on the side where the booking actually starts/ends.
         // If clipped by the viewport, that edge stays square to signal "extends".
         truncatedLeft ? 'rounded-l-none' : 'rounded-l-md',

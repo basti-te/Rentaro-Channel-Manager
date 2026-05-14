@@ -1,11 +1,28 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, eq, gte, inArray, lte, lt, gt } from 'drizzle-orm';
-import { bookings, properties } from '@cm/db';
+import { bookings, properties, tenants } from '@cm/db';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
 
 /** YYYY-MM-DD validator. */
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
+/** HH:mm validator (24-hour). */
+const timeStr = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:mm');
+
+/** Days between two YYYY-MM-DD dates (UTC-safe, no DST drift since both are dates). */
+function nightsBetween(checkin: string, checkout: string): number {
+  const a = Date.UTC(
+    Number(checkin.slice(0, 4)),
+    Number(checkin.slice(5, 7)) - 1,
+    Number(checkin.slice(8, 10)),
+  );
+  const b = Date.UTC(
+    Number(checkout.slice(0, 4)),
+    Number(checkout.slice(5, 7)) - 1,
+    Number(checkout.slice(8, 10)),
+  );
+  return Math.round((b - a) / 86_400_000);
+}
 
 export const bookingsRouter = router({
   /**
@@ -61,13 +78,23 @@ export const bookingsRouter = router({
           propertyId: z.string().uuid(),
           checkin: dateStr,
           checkout: dateStr,
+          checkinTime: timeStr.optional(),
+          checkoutTime: timeStr.optional(),
+          guestCount: z.number().int().min(1).max(50).optional(),
           isBlock: z.boolean().default(false),
           guestName: z.string().max(120).optional(),
           guestPhone: z.string().max(40).optional(),
           guestEmail: z.string().email().max(180).optional(),
-          priceCents: z.number().int().nonnegative().optional(),
+          /** Per-night rate (incl. VAT), in cents. */
+          nightlyRateCents: z.number().int().nonnegative().optional(),
+          /** One-off cleaning fee (incl. VAT), in cents. */
+          cleaningFeeCents: z.number().int().nonnegative().optional(),
+          /** Override the tenant's default city-tax rate (basis points). */
+          cityTaxRateBp: z.number().int().min(0).max(10_000).optional(),
           currency: z.string().length(3).default('EUR'),
           notes: z.string().max(2000).optional(),
+          /** If true, review automation sends a review request 3 days after checkout. */
+          autoReviewEnabled: z.boolean().optional(),
         })
         .refine((v) => v.checkin < v.checkout, {
           message: 'checkout must be after checkin',
@@ -111,6 +138,38 @@ export const bookingsRouter = router({
         });
       }
 
+      // ── Resolve defaults from tenant/property ────────────────────────────
+      const tenant = (
+        await ctx.db
+          .select({
+            defaultCityTaxRateBp: tenants.defaultCityTaxRateBp,
+            defaultCheckinTime: tenants.defaultCheckinTime,
+            defaultCheckoutTime: tenants.defaultCheckoutTime,
+          })
+          .from(tenants)
+          .where(eq(tenants.id, ctx.tenantId!))
+          .limit(1)
+      )[0]!;
+
+      const checkinTime = input.checkinTime ?? tenant.defaultCheckinTime;
+      const checkoutTime = input.checkoutTime ?? tenant.defaultCheckoutTime;
+      const guestCount = input.guestCount ?? 1;
+      const cityTaxRateBp = input.cityTaxRateBp ?? tenant.defaultCityTaxRateBp;
+
+      // ── Compute the breakdown ───────────────────────────────────────────
+      let priceCents: bigint | null = null;
+      let cityTaxCents: bigint | null = null;
+
+      if (!input.isBlock && input.nightlyRateCents != null) {
+        const nights = nightsBetween(input.checkin, input.checkout);
+        const lodgingCents = BigInt(input.nightlyRateCents) * BigInt(nights);
+        const cleaningCents = BigInt(input.cleaningFeeCents ?? 0);
+        // city tax = lodging * (rate_bp / 10000), rounded to nearest cent
+        cityTaxCents =
+          (lodgingCents * BigInt(cityTaxRateBp) + 5000n) / 10000n;
+        priceCents = lodgingCents + cleaningCents + cityTaxCents;
+      }
+
       const [row] = await ctx.db
         .insert(bookings)
         .values({
@@ -123,9 +182,23 @@ export const bookingsRouter = router({
           guestEmail: input.isBlock ? null : input.guestEmail,
           checkin: input.checkin,
           checkout: input.checkout,
-          priceCents: input.priceCents ? BigInt(input.priceCents) : null,
+          checkinTime,
+          checkoutTime,
+          guestCount,
+          nightlyRateCents:
+            !input.isBlock && input.nightlyRateCents != null
+              ? BigInt(input.nightlyRateCents)
+              : null,
+          cleaningFeeCents:
+            !input.isBlock && input.cleaningFeeCents != null
+              ? BigInt(input.cleaningFeeCents)
+              : null,
+          cityTaxRateBp: !input.isBlock ? cityTaxRateBp : null,
+          cityTaxCents,
+          priceCents,
           currency: input.currency,
           notes: input.notes,
+          autoReviewEnabled: input.isBlock ? false : (input.autoReviewEnabled ?? true),
         })
         .returning();
       return row;

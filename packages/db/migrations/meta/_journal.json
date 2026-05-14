@@ -15,6 +15,20 @@
       "when": 1778765637754,
       "tag": "0001_premium_mongoose",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778769949428,
+      "tag": "0002_premium_baron_strucker",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778770980875,
+      "tag": "0003_aspiring_robbie_robertson",
+      "breakpoints": true
     }
   ]
 }

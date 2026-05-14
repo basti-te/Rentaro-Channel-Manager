@@ -1,0 +1,1 @@
+ALTER TABLE "bookings" ADD COLUMN "auto_review_enabled" boolean DEFAULT true NOT NULL;

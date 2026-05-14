@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { addDays, format } from 'date-fns';
 import { cn } from '@cm/ui';
 import {
   DAY_W,
@@ -44,15 +45,39 @@ interface Booking {
   currency: string;
 }
 
+export interface SelectionResult {
+  propertyId: string;
+  checkin: string;  // YYYY-MM-DD
+  checkout: string; // YYYY-MM-DD (day after the last selected day)
+}
+
 interface Props {
   start: Date;
   dayCount: number;
   groups: Group[];
   properties: Property[];
   bookings: Booking[];
+  onSelectRange?: (result: SelectionResult) => void;
+  onBookingClick?: (bookingId: string) => void;
 }
 
-export function Calendar({ start, dayCount, groups, properties, bookings }: Props) {
+interface PendingSelection {
+  propertyId: string;
+  startDay: number;
+  endDay: number;
+}
+
+const LONG_PRESS_MS = 300;
+
+export function Calendar({
+  start,
+  dayCount,
+  groups,
+  properties,
+  bookings,
+  onSelectRange,
+  onBookingClick,
+}: Props) {
   const days = useMemo(() => buildDays(start, dayCount), [start, dayCount]);
   const months = useMemo(() => monthSpans(days), [days]);
   const today = useMemo(() => new Date(), []);
@@ -60,6 +85,19 @@ export function Calendar({ start, dayCount, groups, properties, bookings }: Prop
     () => days.findIndex((d) => isSameDay(d, today)),
     [days, today],
   );
+
+  // ── Selection (click + drag, long-press on touch) ───────────────────────
+  const [pending, setPending] = useState<PendingSelection | null>(null);
+  const pointerStateRef = useRef<{
+    propertyId: string;
+    startDay: number;
+    pointerId: number;
+    startedAt: number;
+    longPressTimer: ReturnType<typeof setTimeout> | null;
+    isTouch: boolean;
+    /** True once the selection is committed by either drag movement or long-press */
+    armed: boolean;
+  } | null>(null);
 
   const totalGridWidth = RAIL_W + dayCount * DAY_W;
 
@@ -110,6 +148,139 @@ export function Calendar({ start, dayCount, groups, properties, bookings }: Prop
     return m;
   }, [bookings, start, dayCount]);
 
+  // ── Selection helpers ───────────────────────────────────────────────────
+
+  function clampSelectionRange(propertyId: string, from: number, to: number) {
+    const occupied = occupiedByProperty.get(propertyId);
+    if (!occupied) return { from, to };
+    // Walk outward from the start; stop at the first occupied day
+    const direction = to >= from ? 1 : -1;
+    let end = from;
+    for (let i = from + direction; direction > 0 ? i <= to : i >= to; i += direction) {
+      if (occupied.has(i)) break;
+      end = i;
+    }
+    return direction > 0 ? { from, to: end } : { from: end, to: from };
+  }
+
+  function commitSelection() {
+    const p = pending;
+    pointerStateRef.current = null;
+    setPending(null);
+    if (!p || !onSelectRange) return;
+
+    const from = Math.min(p.startDay, p.endDay);
+    const to = Math.max(p.startDay, p.endDay); // inclusive last selected day
+    const property = properties.find((x) => x.id === p.propertyId);
+    const minStay = property?.defaultMinStay ?? 1;
+
+    // Selection length = (to - from + 1) days, but at least minStay
+    const lengthDays = Math.max(to - from + 1, minStay);
+
+    const checkinDate = addDays(start, from);
+    const checkoutDate = addDays(checkinDate, lengthDays);
+
+    onSelectRange({
+      propertyId: p.propertyId,
+      checkin: format(checkinDate, 'yyyy-MM-dd'),
+      checkout: format(checkoutDate, 'yyyy-MM-dd'),
+    });
+  }
+
+  function cancelSelection() {
+    const state = pointerStateRef.current;
+    if (state?.longPressTimer) clearTimeout(state.longPressTimer);
+    pointerStateRef.current = null;
+    setPending(null);
+  }
+
+  // Listen on window so pointerup outside cells still commits
+  useEffect(() => {
+    const onUp = () => {
+      const state = pointerStateRef.current;
+      if (!state) return;
+      // Cancel timer in case it fires after up
+      if (state.longPressTimer) clearTimeout(state.longPressTimer);
+
+      const isClick = !state.armed; // never moved or long-pressed
+      if (isClick) {
+        // Treat as single-cell selection
+        setPending({
+          propertyId: state.propertyId,
+          startDay: state.startDay,
+          endDay: state.startDay,
+        });
+        // commitSelection reads `pending` state, so defer to next tick
+        setTimeout(commitSelection, 0);
+      } else {
+        commitSelection();
+      }
+    };
+    const onCancel = () => cancelSelection();
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    return () => {
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+    };
+  }, [pending]);  // re-bind so closure sees latest pending
+
+  function handleCellPointerDown(
+    e: React.PointerEvent,
+    propertyId: string,
+    dayIdx: number,
+  ) {
+    const occupied = occupiedByProperty.get(propertyId);
+    if (occupied?.has(dayIdx)) return; // ignore down on occupied cells
+
+    const isTouch = e.pointerType === 'touch';
+    const state = {
+      propertyId,
+      startDay: dayIdx,
+      pointerId: e.pointerId,
+      startedAt: Date.now(),
+      isTouch,
+      armed: false,
+      longPressTimer: null as ReturnType<typeof setTimeout> | null,
+    };
+
+    if (isTouch) {
+      // On touch, only arm the selection after a long-press, so normal
+      // scrolling/tapping isn't hijacked.
+      state.longPressTimer = setTimeout(() => {
+        state.armed = true;
+        setPending({ propertyId, startDay: dayIdx, endDay: dayIdx });
+        // Haptic-ish nudge (optional)
+        if ('vibrate' in navigator) navigator.vibrate?.(20);
+      }, LONG_PRESS_MS);
+    } else {
+      // Mouse/pen: arm immediately; clicks are short, drags are long
+      state.armed = false; // will be set true on first move
+      setPending({ propertyId, startDay: dayIdx, endDay: dayIdx });
+    }
+
+    pointerStateRef.current = state;
+  }
+
+  function handleCellPointerEnter(
+    _e: React.PointerEvent,
+    propertyId: string,
+    dayIdx: number,
+  ) {
+    const state = pointerStateRef.current;
+    if (!state) return;
+    if (state.propertyId !== propertyId) return; // selections stay in one row
+    // On touch, only update once long-press has armed
+    if (state.isTouch && !state.armed) return;
+    state.armed = true;
+    const { from, to } = clampSelectionRange(propertyId, state.startDay, dayIdx);
+    setPending({
+      propertyId,
+      startDay: from === state.startDay ? from : to,
+      endDay: from === state.startDay ? to : from,
+    });
+  }
+
   return (
     <div
       className={cn(
@@ -138,19 +309,32 @@ export function Calendar({ start, dayCount, groups, properties, bookings }: Prop
                 rightFill={dayCount * DAY_W}
               />
             )}
-            {s.items.map((p) => (
-              <PropertyRow
-                key={p.id}
-                property={p}
-                groupColor={s.group?.color}
-                days={days}
-                todayIdx={todayIdx}
-                bookings={bookingsByProperty.get(p.id) ?? []}
-                occupied={occupiedByProperty.get(p.id) ?? new Set()}
-                start={start}
-                dayCount={dayCount}
-              />
-            ))}
+            {s.items.map((p) => {
+              const rowPending =
+                pending && pending.propertyId === p.id
+                  ? {
+                      from: Math.min(pending.startDay, pending.endDay),
+                      to: Math.max(pending.startDay, pending.endDay),
+                    }
+                  : null;
+              return (
+                <PropertyRow
+                  key={p.id}
+                  property={p}
+                  groupColor={s.group?.color}
+                  days={days}
+                  todayIdx={todayIdx}
+                  bookings={bookingsByProperty.get(p.id) ?? []}
+                  occupied={occupiedByProperty.get(p.id) ?? new Set()}
+                  start={start}
+                  dayCount={dayCount}
+                  selectionRange={rowPending}
+                  onCellPointerDown={handleCellPointerDown}
+                  onCellPointerEnter={handleCellPointerEnter}
+                  onBookingClick={onBookingClick}
+                />
+              );
+            })}
           </section>
         ))}
       </div>
@@ -247,6 +431,10 @@ function PropertyRow({
   occupied,
   start,
   dayCount,
+  selectionRange,
+  onCellPointerDown,
+  onCellPointerEnter,
+  onBookingClick,
 }: {
   property: Property;
   groupColor: string | undefined;
@@ -256,6 +444,10 @@ function PropertyRow({
   occupied: Set<number>;
   start: Date;
   dayCount: number;
+  selectionRange: { from: number; to: number } | null;
+  onCellPointerDown: (e: React.PointerEvent, propertyId: string, dayIdx: number) => void;
+  onCellPointerEnter: (e: React.PointerEvent, propertyId: string, dayIdx: number) => void;
+  onBookingClick?: (bookingId: string) => void;
 }) {
   const rateLabel = formatRate(property.defaultRateCents, property.currency);
   const minStay = property.defaultMinStay;
@@ -265,23 +457,35 @@ function PropertyRow({
       <PropertyRail name={property.name} groupColor={groupColor} />
 
       {/* Day cells */}
-      <div className="relative flex" style={{ height: ROW_H }}>
+      <div className="relative flex select-none" style={{ height: ROW_H }}>
         {days.map((d, i) => {
           const wknd = isWeekend(d);
           const isToday = i === todayIdx;
           const isFree = !occupied.has(i);
+          const inRange =
+            selectionRange != null && i >= selectionRange.from && i <= selectionRange.to;
           return (
             <div
               key={i}
+              onPointerDown={(e) => {
+                // Make this cell own the pointer so subsequent move/up events fire on it
+                if (isFree) {
+                  (e.target as Element).releasePointerCapture?.(e.pointerId);
+                  onCellPointerDown(e, property.id, i);
+                }
+              }}
+              onPointerEnter={(e) => onCellPointerEnter(e, property.id, i)}
               className={cn(
                 'flex flex-col items-center justify-center',
                 'border-r border-b border-line/60',
                 wknd && 'bg-sunken/30',
                 isToday && 'bg-brand-soft/40',
+                isFree && 'cursor-pointer hover:bg-brand-soft/40 transition-colors',
+                inRange && 'bg-brand-soft/80 hover:bg-brand-soft/80',
               )}
-              style={{ width: DAY_W, height: ROW_H }}
+              style={{ width: DAY_W, height: ROW_H, touchAction: 'pan-y' }}
             >
-              {isFree && rateLabel && (
+              {isFree && rateLabel && !inRange && (
                 <span
                   className={cn(
                     'num text-[10.5px] leading-none',
@@ -291,7 +495,7 @@ function PropertyRow({
                   {rateLabel}
                 </span>
               )}
-              {isFree && minStay > 1 && (
+              {isFree && minStay > 1 && !inRange && (
                 <span
                   className={cn(
                     'text-[9px] leading-none mt-1 tracking-[0.04em]',
@@ -352,6 +556,7 @@ function PropertyRow({
               guestName={b.guestName}
               priceCents={b.priceCents}
               currency={b.currency}
+              onClick={() => onBookingClick?.(b.id)}
             />
           );
         })}

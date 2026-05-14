@@ -118,6 +118,14 @@ export const tenants = pgTable('tenants', {
   stripeCustomerId: text('stripe_customer_id').unique(),
   defaultTimezone: text('default_timezone').notNull().default('Europe/Berlin'),
   defaultCurrency: text('default_currency').notNull().default('EUR'),
+
+  /** City / tourist tax rate in basis points (500 = 5.00%). Berlin = 500. */
+  defaultCityTaxRateBp: integer('default_city_tax_rate_bp').notNull().default(500),
+  /** Default check-in time, format HH:mm, applied to new bookings. */
+  defaultCheckinTime: text('default_checkin_time').notNull().default('15:00'),
+  /** Default check-out time, format HH:mm. */
+  defaultCheckoutTime: text('default_checkout_time').notNull().default('11:00'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -255,6 +263,8 @@ export const properties = pgTable(
     defaultRateCents: bigint('default_rate_cents', { mode: 'bigint' }),
     /** Default minimum stay (nights). Shown on empty calendar cells. */
     defaultMinStay: integer('default_min_stay').notNull().default(1),
+    /** Default cleaning fee (per booking), incl. VAT. */
+    defaultCleaningFeeCents: bigint('default_cleaning_fee_cents', { mode: 'bigint' }),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -288,10 +298,29 @@ export const bookings = pgTable(
     // Dates (timezone-free — `2026-05-14` means that date in property's tz)
     checkin: date('checkin').notNull(),
     checkout: date('checkout').notNull(),
+    /** Check-in time of day, HH:mm (snapshot at booking creation). */
+    checkinTime: text('checkin_time').notNull().default('15:00'),
+    /** Check-out time of day, HH:mm. */
+    checkoutTime: text('checkout_time').notNull().default('11:00'),
+    /** Number of guests. */
+    guestCount: integer('guest_count').notNull().default(1),
 
-    // Money
+    // Money — breakdown + total
+    /** Nightly rate (incl. VAT), per night. */
+    nightlyRateCents: bigint('nightly_rate_cents', { mode: 'bigint' }),
+    /** One-off cleaning fee (incl. VAT). */
+    cleaningFeeCents: bigint('cleaning_fee_cents', { mode: 'bigint' }),
+    /** City / tourist tax rate snapshot, in basis points (e.g. 500 = 5%). */
+    cityTaxRateBp: integer('city_tax_rate_bp'),
+    /** Calculated city tax amount (= nightly_rate × nights × rate_bp / 10000). */
+    cityTaxCents: bigint('city_tax_cents', { mode: 'bigint' }),
+    /** Grand total = lodging + cleaning + city tax. Source of truth for Channex. */
     priceCents: bigint('price_cents', { mode: 'bigint' }),
     currency: text('currency').notNull().default('EUR'),
+
+    /** If true, the review-automation job (Phase 11) sends a review request
+     *  3 days after checkout. Per-booking opt-out for difficult guests. */
+    autoReviewEnabled: boolean('auto_review_enabled').notNull().default(true),
 
     // OTA-specific
     channexBookingId: text('channex_booking_id').unique(),

@@ -236,6 +236,21 @@ try {
     console.log(`↻ Backfilled default rate/min-stay on ${backfilled.length} apartment(s)`);
   }
 
+  // Backfill default cleaning fee = 40 EUR for any apartment without one set.
+  const cleaningBackfilled = await db
+    .update(properties)
+    .set({ defaultCleaningFeeCents: 4000n })
+    .where(
+      and(
+        eq(properties.tenantId, userTenantId),
+        isNull(properties.defaultCleaningFeeCents),
+      ),
+    )
+    .returning({ id: properties.id });
+  if (cleaningBackfilled.length > 0) {
+    console.log(`↻ Backfilled cleaning fee (40 EUR) on ${cleaningBackfilled.length} apartment(s)`);
+  }
+
   // ── 7. Sample bookings — only seed if zero exist yet, otherwise leave the
   //       user's real data alone.
   const existingBookings = await db
