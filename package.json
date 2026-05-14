@@ -1,0 +1,26 @@
+{
+  "name": "channel-manager",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Multi-tenant channel manager for vacation rentals (Channex Whitelabel)",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "pnpm --filter @cm/db generate",
+    "db:migrate": "pnpm --filter @cm/db migrate",
+    "db:studio": "pnpm --filter @cm/db studio",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.3",
+    "typescript": "^5.5.4",
+    "prettier": "^3.3.3"
+  }
+}
