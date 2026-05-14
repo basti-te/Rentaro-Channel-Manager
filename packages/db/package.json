@@ -19,7 +19,6 @@
     "dump": "tsx scripts/dump.ts",
     "setup-channex-mapping": "tsx scripts/setup-channex-mapping.ts",
     "sync-jobs:latest": "tsx scripts/latest-sync-job.ts",
-    "fix-stuck-pending-sync": "tsx scripts/fix-stuck-pending-sync.ts",
     "push": "drizzle-kit push",
     "studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",

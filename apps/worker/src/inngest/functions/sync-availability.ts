@@ -84,23 +84,9 @@ export const syncAvailability = inngest.createFunction(
             })
             .where(eq(syncJobs.id, jobId));
         });
-        // Bookings on an unmapped property aren't waiting for anything —
-        // they're local-only. Move them out of pending_sync so the detail
-        // sheet does not say "Sync ausstehend" forever.
-        await step.run('mark-bookings-confirmed', async () => {
-          await db
-            .update(bookings)
-            .set({ status: 'confirmed', lastSyncError: null })
-            .where(
-              and(
-                eq(bookings.tenantId, tenantId),
-                eq(bookings.propertyId, propertyId),
-                eq(bookings.status, 'pending_sync'),
-                lt(bookings.checkin, to),
-                gte(bookings.checkout, from),
-              ),
-            );
-        });
+        // Leave bookings in pending_sync — they ARE waiting (for the
+        // apartment to get a channel mapping). The "Sync ausstehend" label
+        // in the detail sheet honestly reflects that.
         return { skipped: true, reason: 'no_mapping' };
       }
 
