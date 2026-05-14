@@ -207,8 +207,6 @@ Booking in Airbnb (or any connected OTA)
 
 ### Production readiness
 
-- **Onboard remaining 14 apartments** in the sandbox (5 min of clicks)
-  or wait until production switch — sandbox data is throwaway.
 - **Secret rotation reminder** — Channex API key, Supabase service
   role, Supabase DB password all appeared in chat during development.
   Rotate before going to production:
@@ -240,14 +238,30 @@ Booking in Airbnb (or any connected OTA)
 ## Channex (sandbox) state
 
 - 1 Channex API key, 1 webhook secret (in `.env.local`)
-- 2 properties connected to our DB:
-  - **Whg 0** — `d7d2200f-…` (manually set up via `setup-channex-mapping` script)
-  - **Whg 1** — `ca06c2e5-…` (via the onboarding mutation)
-- 14 apartments not yet connected: Whg 2–13, 17, 18
+- **All 16 apartments connected** via the Phase 7 onboarding flow.
+  Whg 0 was bootstrapped manually with the (now-removed)
+  `setup-channex-mapping` script; the other 15 went through the
+  `properties.onboardToChannex` mutation triggered from the UI.
 - No real OTA channels connected — that needs a paid Channex account
-  and Airbnb / Booking.com partner credentials
+  and Airbnb / Booking.com partner credentials.
 
 Run `pnpm --filter @cm/db check-onboarding` for the live mapping.
+
+### Resetting for production switch
+
+When moving from sandbox to production Channex, the channex_properties
+rows are throwaway. Steps:
+
+1. Update `CHANNEX_API_URL` and `CHANNEX_API_KEY` in `.env.local`.
+2. Wipe sandbox mappings:
+   ```sql
+   UPDATE properties SET channex_property_ref = NULL;
+   DELETE FROM channex_properties;
+   ```
+3. Apartments page → click "Verbinden" on each → creates fresh
+   Production Channex resources via the same mutation.
+4. (Production only) Register the inbound webhook once via the steps
+   in [channex-webhook-setup.md](channex-webhook-setup.md).
 
 ---
 
