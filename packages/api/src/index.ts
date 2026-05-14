@@ -1,11 +1,15 @@
-/**
- * @cm/api — tRPC routers shared between the web app and the worker.
- *
- * Phase 1 will fill this in with the first routers (properties, groups).
- * For Phase 0 we expose the placeholders so other packages can import the
- * type-shape (`AppRouter`) without breaking type-check.
- */
+import { router } from './trpc';
+import { meRouter } from './routers/me';
+import { propertyGroupsRouter } from './routers/property-groups';
+import { propertiesRouter } from './routers/properties';
 
-export type AppRouter = {
-  // Filled in Phase 1.
-};
+export const appRouter = router({
+  me: meRouter,
+  propertyGroups: propertyGroupsRouter,
+  properties: propertiesRouter,
+});
+
+export type AppRouter = typeof appRouter;
+
+export * from './context';
+export { createContext } from './context';

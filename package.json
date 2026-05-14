@@ -15,6 +15,8 @@
     "typecheck": "turbo run typecheck",
     "db:generate": "pnpm --filter @cm/db generate",
     "db:migrate": "pnpm --filter @cm/db migrate",
+    "db:seed": "pnpm --filter @cm/db seed",
+    "db:verify": "pnpm --filter @cm/db verify",
     "db:studio": "pnpm --filter @cm/db studio",
     "clean": "turbo run clean && rm -rf node_modules"
   },

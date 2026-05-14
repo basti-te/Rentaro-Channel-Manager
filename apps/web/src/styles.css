@@ -1,0 +1,191 @@
+/* ============================================================================
+ *  Channel Manager — Editorial Workshop
+ *  Calm, paper-warm SaaS dashboard. Terracotta as a single bold accent.
+ *  Fraunces (display, variable) + Manrope (body) + JetBrains Mono (numerics).
+ * ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..800,0..100&family=Manrope:wght@300..800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Design tokens ─────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* Surfaces — warm paper neutrals */
+    --canvas:   246 243 236;   /* #F6F3EC  warm off-white */
+    --surface:  255 255 255;   /* #FFFFFF  clean white card */
+    --sunken:   239 234 224;   /* #EFEAE0  recessed panel */
+    --line:     232 226 213;   /* #E8E2D5  hairline border */
+    --line-strong: 213 205 188;
+
+    /* Ink */
+    --ink:       42  38  34;   /* #2A2622  warm near-black */
+    --ink-soft:  92  86  78;   /* #5C564E */
+    --muted:    128 122 110;   /* #807A6E  secondary */
+    --whisper:  167 160 145;   /* #A7A091  tertiary, captions */
+
+    /* Brand — terracotta. Used sparingly: primary CTA, active state. */
+    --brand:        176  67  28;   /* #B0431C */
+    --brand-deep:   140  47  16;   /* #8C2F10 hover/press */
+    --brand-soft:   250 231 221;   /* #FAE7DD soft fill */
+    --brand-tint:   244 215 197;   /* #F4D7C5 */
+
+    /* Accents */
+    --accent:        23  21  19;   /* #171513  warm black, used for primary buttons */
+    --accent-soft:   60  54  47;
+
+    /* Status — muted, paper-friendly */
+    --positive: 47  100  72;       /* #2F6448 */
+    --positive-soft: 222 235 222;
+    --warning:  176 115  20;
+    --warning-soft: 248 232 200;
+    --danger:   162  37  37;
+    --danger-soft: 245 220 220;
+
+    /* Shadows — warm-tinted, layered */
+    --shadow-sm:
+      0 1px 2px rgba(42, 38, 34, 0.04),
+      0 1px 1px rgba(42, 38, 34, 0.06);
+    --shadow-md:
+      0 1px 2px rgba(42, 38, 34, 0.04),
+      0 4px 12px -2px rgba(42, 38, 34, 0.08),
+      0 0 0 1px rgba(42, 38, 34, 0.04);
+    --shadow-lg:
+      0 1px 2px rgba(42, 38, 34, 0.04),
+      0 12px 32px -8px rgba(42, 38, 34, 0.16),
+      0 0 0 1px rgba(42, 38, 34, 0.06);
+
+    /* Radii */
+    --r-sm: 4px;
+    --r-md: 6px;
+    --r-lg: 10px;
+    --r-xl: 14px;
+    --r-2xl: 20px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas:    26  23  20;     /* #1A1714 */
+      --surface:   34  30  26;     /* #221E1A */
+      --sunken:    20  17  14;
+      --line:      51  44  37;     /* #332C25 */
+      --line-strong: 70 60 51;
+
+      --ink:      244 239 227;     /* #F4EFE3 */
+      --ink-soft: 200 192 178;
+      --muted:    149 140 124;
+      --whisper:  108 100  87;
+
+      --brand:        198  93  56;
+      --brand-deep:   220 121  82;
+      --brand-soft:    56  29  17;
+      --brand-tint:    82  43  25;
+
+      --accent:        244 239 227;
+      --accent-soft:   200 192 178;
+
+      --positive:      114 184 137;
+      --positive-soft:  29  56  39;
+      --warning:       217 174  77;
+      --warning-soft:   60  46  17;
+      --danger:        217 110 110;
+      --danger-soft:    58  21  21;
+
+      --shadow-sm:
+        0 1px 2px rgba(0, 0, 0, 0.4),
+        0 1px 1px rgba(0, 0, 0, 0.3);
+      --shadow-md:
+        0 1px 2px rgba(0, 0, 0, 0.3),
+        0 4px 12px -2px rgba(0, 0, 0, 0.4),
+        0 0 0 1px rgba(255, 255, 255, 0.04);
+      --shadow-lg:
+        0 1px 2px rgba(0, 0, 0, 0.3),
+        0 12px 32px -8px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+  }
+
+  html, body, #root { height: 100%; }
+
+  body {
+    font-family: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-feature-settings: 'ss02' on, 'ss03' on, 'cv11' on;
+    background: rgb(var(--canvas));
+    color: rgb(var(--ink));
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Tabular numerals everywhere for data tables, calendar (Phase 2), etc. */
+  .tabular { font-variant-numeric: tabular-nums; }
+  .num    {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-feature-settings: 'tnum' on, 'zero' on;
+    font-weight: 500;
+  }
+
+  /* Display heading style — Fraunces with optical-size + soft variation */
+  .display {
+    font-family: 'Fraunces', ui-serif, Georgia, serif;
+    font-variation-settings: 'opsz' 96, 'SOFT' 50;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+
+  /* Subtle paper grain on canvas — only on large canvas backgrounds */
+  .grain {
+    position: relative;
+    isolation: isolate;
+  }
+  .grain::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(rgba(42, 38, 34, 0.025) 1px, transparent 1px);
+    background-size: 3px 3px;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    z-index: -1;
+  }
+  @media (prefers-color-scheme: dark) {
+    .grain::before {
+      background-image:
+        radial-gradient(rgba(255, 250, 240, 0.02) 1px, transparent 1px);
+      mix-blend-mode: screen;
+    }
+  }
+}
+
+/* ─── Focus ring ────────────────────────────────────────────────────────── */
+@layer base {
+  :focus { outline: none; }
+  :focus-visible {
+    outline: 2px solid rgb(var(--brand));
+    outline-offset: 2px;
+    border-radius: var(--r-sm);
+  }
+
+  ::selection {
+    background: rgb(var(--brand) / 0.18);
+    color: rgb(var(--ink));
+  }
+}
+
+/* ─── Subtle scrollbar ──────────────────────────────────────────────────── */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--line-strong)) transparent;
+  }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: rgb(var(--line-strong));
+    border-radius: 8px;
+    border: 2px solid rgb(var(--canvas));
+  }
+  *::-webkit-scrollbar-thumb:hover { background: rgb(var(--muted)); }
+}
