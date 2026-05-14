@@ -13,10 +13,10 @@ import { de } from 'date-fns/locale';
 export const DAY_W = 56;
 /** Height of one apartment row in px. */
 export const ROW_H = 56;
-/** Width of the sticky left rail. Trimmed iteratively (248 → 192 → 132)
- *  to maximize visible day cells on small viewports. Anything narrower
- *  starts truncating short apartment names. */
-export const RAIL_W = 132;
+/** Width of the sticky left rail. Trimmed iteratively (248 → 192 → 132 → 112)
+ *  to maximize visible day cells on small viewports. At 112 px short names
+ *  like "Whg 18" still fit; longer apartment labels truncate with an ellipsis. */
+export const RAIL_W = 112;
 
 /** Convert YYYY-MM-DD → local Date at midnight (timezone-safe). */
 export function dateFromISO(s: string): Date {
