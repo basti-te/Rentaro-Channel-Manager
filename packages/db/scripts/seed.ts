@@ -21,7 +21,13 @@ import { and, eq, inArray } from 'drizzle-orm';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 
-import { tenants, propertyGroups, properties, memberships } from '../src/schema';
+import {
+  tenants,
+  propertyGroups,
+  properties,
+  memberships,
+  bookings,
+} from '../src/schema';
 
 config({ path: resolve(process.cwd(), '../../.env.local') });
 
@@ -215,6 +221,69 @@ try {
     created++;
   }
   console.log(`✓ Apartments: ${created} new, ${existingNames.size} already in place`);
+
+  // ── 7. Sample bookings — only seed if zero exist yet, otherwise leave the
+  //       user's real data alone.
+  const existingBookings = await db
+    .select({ id: bookings.id })
+    .from(bookings)
+    .where(eq(bookings.tenantId, userTenantId))
+    .limit(1);
+
+  if (existingBookings.length === 0) {
+    const aptByName = new Map<string, string>();
+    const all = await db
+      .select({ id: properties.id, name: properties.name })
+      .from(properties)
+      .where(eq(properties.tenantId, userTenantId));
+    for (const a of all) aptByName.set(a.name, a.id);
+
+    /** Days offset from today, formatted as YYYY-MM-DD (UTC-safe). */
+    const offset = (d: number) => {
+      const date = new Date();
+      date.setUTCDate(date.getUTCDate() + d);
+      return date.toISOString().slice(0, 10);
+    };
+
+    const sample: Array<{
+      apt: string;
+      checkin: string;
+      checkout: string;
+      source: 'airbnb' | 'booking_com' | 'internal' | 'block';
+      status: 'synced' | 'confirmed' | 'blocked';
+      guestName?: string;
+      priceCents?: bigint;
+    }> = [
+      { apt: 'Whg 0', checkin: offset(-2), checkout: offset(3), source: 'airbnb',     status: 'synced',    guestName: 'Lena Hartmann',  priceCents: 36000n },
+      { apt: 'Whg 1', checkin: offset(1),  checkout: offset(5), source: 'booking_com',status: 'synced',    guestName: 'Marco Bianchi',  priceCents: 42000n },
+      { apt: 'Whg 3', checkin: offset(4),  checkout: offset(11),source: 'airbnb',     status: 'synced',    guestName: 'Sofia Ríos',     priceCents: 78000n },
+      { apt: 'Whg 6', checkin: offset(0),  checkout: offset(7), source: 'internal',   status: 'confirmed', guestName: 'Thomas Weber',   priceCents: 52500n },
+      { apt: 'Whg 8', checkin: offset(7),  checkout: offset(14),source: 'booking_com',status: 'synced',    guestName: 'Anna Kowalski',  priceCents: 91000n },
+      { apt: 'Whg 10',checkin: offset(2),  checkout: offset(6), source: 'block',      status: 'blocked' },
+      { apt: 'Whg 12',checkin: offset(10), checkout: offset(13),source: 'airbnb',     status: 'synced',    guestName: 'James O’Connor', priceCents: 33000n },
+    ];
+
+    let bk = 0;
+    for (const s of sample) {
+      const pid = aptByName.get(s.apt);
+      if (!pid) continue;
+      await db.insert(bookings).values({
+        tenantId: userTenantId,
+        propertyId: pid,
+        source: s.source,
+        status: s.status,
+        guestName: s.guestName,
+        checkin: s.checkin,
+        checkout: s.checkout,
+        priceCents: s.priceCents,
+        currency: 'EUR',
+      });
+      bk++;
+    }
+    console.log(`+ Sample bookings: ${bk}`);
+  } else {
+    console.log(`✓ Bookings already present, sample seeding skipped.`);
+  }
 
   console.log('\nDone.');
 } finally {

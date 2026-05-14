@@ -10,6 +10,7 @@ import { LoginPage } from './routes/login';
 import { DashboardLayout } from './routes/_dashboard';
 import { OverviewPage } from './routes/overview';
 import { ApartmentsPage } from './routes/apartments';
+import { CalendarPage } from './routes/calendar';
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -43,9 +44,15 @@ const apartmentsRoute = createRoute({
   component: ApartmentsPage,
 });
 
+const calendarRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/calendar',
+  component: CalendarPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
-  dashboardRoute.addChildren([overviewRoute, apartmentsRoute]),
+  dashboardRoute.addChildren([overviewRoute, apartmentsRoute, calendarRoute]),
 ]);
 
 export const router = createRouter({ routeTree });

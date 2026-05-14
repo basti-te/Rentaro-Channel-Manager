@@ -24,10 +24,10 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: '/', label: 'Overview', icon: LayoutGrid },
-  { to: '/calendar', label: 'Calendar', icon: Calendar, badge: 'Phase 2' },
+  { to: '/calendar', label: 'Calendar', icon: Calendar },
   { to: '/apartments', label: 'Apartments', icon: LayoutGrid },
   { to: '/messages', label: 'Messages', icon: MessageSquare, badge: 'Phase 8' },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/settings', label: 'Settings', icon: Settings, badge: 'soon' },
 ];
 
 export function DashboardLayout() {
