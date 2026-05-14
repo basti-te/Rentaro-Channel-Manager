@@ -54,14 +54,14 @@ export const Webhook = z
     type: z.literal('webhook').optional(),
     attributes: z
       .object({
-        property_id: z.string().uuid().nullable().optional(),
-        callback_url: z.string().url().optional(),
-        event_mask: z.string().optional(),
-        is_global: z.boolean().optional(),
-        is_active: z.boolean().optional(),
-        send_data: z.boolean().optional(),
-        headers: z.record(z.string()).nullable().optional(),
-        request_params: z.record(z.unknown()).nullable().optional(),
+        property_id: z.string().uuid().nullish(),
+        callback_url: z.string().url().nullish(),
+        event_mask: z.string().nullish(),
+        is_global: z.boolean().nullish(),
+        is_active: z.boolean().nullish(),
+        send_data: z.boolean().nullish(),
+        headers: z.record(z.string()).nullish(),
+        request_params: z.record(z.unknown()).nullish(),
       })
       .passthrough(),
   })

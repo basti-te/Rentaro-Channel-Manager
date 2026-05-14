@@ -4,15 +4,17 @@ export const RoomType = z
   .object({
     id: z.string().uuid(),
     type: z.literal('room_type').optional(),
+    // Channex returns null for unset fields; .nullish() accepts both null
+    // and undefined.
     attributes: z
       .object({
-        title: z.string().optional(),
-        property_id: z.string().uuid().optional(),
-        count_of_rooms: z.number().int().optional(),
-        occ_adults: z.number().int().optional(),
-        occ_children: z.number().int().optional(),
-        occ_infants: z.number().int().optional(),
-        is_active: z.boolean().optional(),
+        title: z.string().nullish(),
+        property_id: z.string().uuid().nullish(),
+        count_of_rooms: z.number().int().nullish(),
+        occ_adults: z.number().int().nullish(),
+        occ_children: z.number().int().nullish(),
+        occ_infants: z.number().int().nullish(),
+        is_active: z.boolean().nullish(),
       })
       .passthrough(),
   })
@@ -28,4 +30,4 @@ export const RoomTypeCreate = z.object({
   occ_children: z.number().int().min(0).default(0),
   occ_infants: z.number().int().min(0).default(0),
 });
-export type RoomTypeCreate = z.infer<typeof RoomTypeCreate>;
+export type RoomTypeCreate = z.input<typeof RoomTypeCreate>;

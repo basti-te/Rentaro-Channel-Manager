@@ -11,19 +11,22 @@ export const Property = z
   .object({
     id: z.string().uuid(),
     type: z.literal('property').optional(),
+    // Channex returns null (not undefined) for empty fields, so every
+    // optional field uses .nullish() (= optional + nullable) instead of
+    // bare .optional().
     attributes: z
       .object({
-        title: z.string().optional(),
-        currency: z.string().length(3).optional(),
-        timezone: z.string().optional(),
-        property_type: z.string().optional(),
-        country: z.string().optional(),
-        city: z.string().optional(),
-        zip_code: z.string().optional(),
-        address: z.string().optional(),
-        latitude: z.union([z.string(), z.number()]).optional(),
-        longitude: z.union([z.string(), z.number()]).optional(),
-        is_active: z.boolean().optional(),
+        title: z.string().nullish(),
+        currency: z.string().nullish(),
+        timezone: z.string().nullish(),
+        property_type: z.string().nullish(),
+        country: z.string().nullish(),
+        city: z.string().nullish(),
+        zip_code: z.string().nullish(),
+        address: z.string().nullish(),
+        latitude: z.union([z.string(), z.number()]).nullish(),
+        longitude: z.union([z.string(), z.number()]).nullish(),
+        is_active: z.boolean().nullish(),
       })
       .passthrough(),
   })
@@ -36,8 +39,14 @@ export const PropertyCreate = z.object({
   title: z.string().min(1),
   currency: z.string().length(3).default('EUR'),
   timezone: z.string().default('Europe/Berlin'),
-  property_type: z.string().default('apartments'),
-  country: z.string().length(2).optional(),
+  /** Channex expects singular ("apartment"), not "apartments". Verified
+   *  against the sandbox via GET /properties on an existing entity. */
+  property_type: z.string().default('apartment'),
+  /** ISO-3166-1 alpha-2. Channex requires this on create. */
+  country: z.string().length(2).default('DE'),
   city: z.string().optional(),
+  zip_code: z.string().optional(),
+  address: z.string().optional(),
 });
-export type PropertyCreate = z.infer<typeof PropertyCreate>;
+/** Input type — defaults are filled in at parse time, so the caller may omit them. */
+export type PropertyCreate = z.input<typeof PropertyCreate>;

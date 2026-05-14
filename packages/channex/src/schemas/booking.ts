@@ -15,89 +15,89 @@ import { ISODate } from './common';
  */
 export const BookingRoom = z
   .object({
-    room_type_id: z.string().uuid().optional(),
-    rate_plan_id: z.string().uuid().optional(),
-    checkin_date: ISODate.optional(),
-    checkout_date: ISODate.optional(),
+    room_type_id: z.string().uuid().nullish(),
+    rate_plan_id: z.string().uuid().nullish(),
+    checkin_date: ISODate.nullish(),
+    checkout_date: ISODate.nullish(),
     occupancy: z
       .object({
-        adults: z.number().int().optional(),
-        children: z.number().int().optional(),
-        infants: z.number().int().optional(),
+        adults: z.number().int().nullish(),
+        children: z.number().int().nullish(),
+        infants: z.number().int().nullish(),
       })
       .partial()
       .passthrough()
-      .optional(),
+      .nullish(),
     /** Per-day prices in minor currency units. */
-    days: z.record(z.union([z.string(), z.number()])).optional(),
+    days: z.record(z.union([z.string(), z.number()])).nullish(),
     /** Aggregate price for this room (sometimes string, sometimes number). */
-    amount: z.union([z.string(), z.number()]).optional(),
-    currency: z.string().optional(),
+    amount: z.union([z.string(), z.number()]).nullish(),
+    currency: z.string().nullish(),
   })
   .passthrough();
 
 export const Booking = z
   .object({
     id: z.string().uuid(),
-    type: z.literal('booking').optional(),
+    type: z.literal('booking').nullish(),
     attributes: z
       .object({
         // Identifiers
-        unique_id: z.string().optional(),
-        ota_name: z.string().optional(),
-        ota_reservation_code: z.string().optional(),
-        status: z.enum(['new', 'modified', 'cancelled']).optional(),
-        property_id: z.string().uuid().optional(),
+        unique_id: z.string().nullish(),
+        ota_name: z.string().nullish(),
+        ota_reservation_code: z.string().nullish(),
+        status: z.enum(['new', 'modified', 'cancelled']).nullish(),
+        property_id: z.string().uuid().nullish(),
 
         // Guest
         customer: z
           .object({
-            name: z.string().optional(),
-            surname: z.string().optional(),
-            mail: z.string().optional(),
-            phone: z.string().optional(),
-            country: z.string().optional(),
+            name: z.string().nullish(),
+            surname: z.string().nullish(),
+            mail: z.string().nullish(),
+            phone: z.string().nullish(),
+            country: z.string().nullish(),
           })
           .partial()
           .passthrough()
-          .optional(),
+          .nullish(),
 
         // Stay
-        arrival_date: ISODate.optional(),
-        departure_date: ISODate.optional(),
+        arrival_date: ISODate.nullish(),
+        departure_date: ISODate.nullish(),
 
         // Occupancy summary
         occupancy: z
           .object({
-            adults: z.number().int().optional(),
-            children: z.number().int().optional(),
-            infants: z.number().int().optional(),
+            adults: z.number().int().nullish(),
+            children: z.number().int().nullish(),
+            infants: z.number().int().nullish(),
           })
           .partial()
           .passthrough()
-          .optional(),
+          .nullish(),
 
         // Money
-        amount: z.union([z.string(), z.number()]).optional(),
-        currency: z.string().optional(),
-        ota_commission: z.union([z.string(), z.number()]).optional(),
+        amount: z.union([z.string(), z.number()]).nullish(),
+        currency: z.string().nullish(),
+        ota_commission: z.union([z.string(), z.number()]).nullish(),
 
         // Per-room breakdown (one entry per room booked)
-        rooms: z.array(BookingRoom).optional(),
+        rooms: z.array(BookingRoom).nullish(),
 
         // Payment
-        payment_collect: z.enum(['property', 'ota']).optional(),
-        payment_type: z.string().optional(),
+        payment_collect: z.enum(['property', 'ota']).nullish(),
+        payment_type: z.string().nullish(),
 
         // Misc
-        notes: z.string().nullable().optional(),
-        revision_id: z.string().optional(),
+        notes: z.string().nullable().nullish(),
+        revision_id: z.string().nullish(),
 
-        inserted_at: z.string().optional(),
-        updated_at: z.string().optional(),
+        inserted_at: z.string().nullish(),
+        updated_at: z.string().nullish(),
       })
       .passthrough(),
-    relationships: z.record(z.unknown()).optional(),
+    relationships: z.record(z.unknown()).nullish(),
   })
   .passthrough();
 
@@ -115,10 +115,10 @@ export type Booking = z.infer<typeof Booking>;
 export const BookingRevision = z
   .object({
     id: z.string().uuid(),
-    booking_id: z.string().uuid().optional(),
-    booking_unique_id: z.string().optional(),
-    event: z.string().optional(),
-    booking: Booking.optional(),
+    booking_id: z.string().uuid().nullish(),
+    booking_unique_id: z.string().nullish(),
+    event: z.string().nullish(),
+    booking: Booking.nullish(),
   })
   .passthrough();
 export type BookingRevision = z.infer<typeof BookingRevision>;

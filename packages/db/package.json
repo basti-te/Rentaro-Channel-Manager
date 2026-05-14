@@ -20,6 +20,7 @@
     "setup-channex-mapping": "tsx scripts/setup-channex-mapping.ts",
     "sync-jobs:latest": "tsx scripts/latest-sync-job.ts",
     "webhooks:latest": "tsx scripts/latest-webhook.ts",
+    "check-onboarding": "tsx scripts/check-onboarding.ts",
     "push": "drizzle-kit push",
     "studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",

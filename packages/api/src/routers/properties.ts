@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq, max } from 'drizzle-orm';
-import { properties, propertyGroups } from '@cm/db';
+import { properties, propertyGroups, channexProperties, tenants } from '@cm/db';
+import { createChannexClient, ChannexError } from '@cm/channex';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
 
 export const propertiesRouter = router({
@@ -144,5 +145,155 @@ export const propertiesRouter = router({
         }
       });
       return { ok: true };
+    }),
+
+  /**
+   * Connect an apartment to Channex by creating a Property, Room Type and
+   * Rate Plan there, then linking everything together in our DB.
+   *
+   * Failure modes:
+   *   - Apartment already mapped → 400
+   *   - Channex Property succeeds but Room Type fails → orphan in Channex,
+   *     no DB state. User can retry; would create another Channex Property.
+   *     We accept that small risk for MVP simplicity.
+   *
+   * On success, queues an initial availability + rates sync so the new
+   * channel has correct data immediately.
+   */
+  onboardToChannex: editorProcedure
+    .input(
+      z.object({
+        propertyId: z.string().uuid(),
+        /** Override defaults; otherwise we use the apartment name + tenant defaults. */
+        title: z.string().min(1).max(80).optional(),
+        timezone: z.string().optional(),
+        currency: z.string().length(3).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // 1. Load apartment + verify it isn't already linked
+      const prop = (
+        await ctx.db
+          .select()
+          .from(properties)
+          .where(and(eq(properties.id, input.propertyId), eq(properties.tenantId, ctx.tenantId!)))
+          .limit(1)
+      )[0];
+      if (!prop) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (prop.channexPropertyRef) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Apartment ist bereits mit Channex verbunden.',
+        });
+      }
+
+      const tenant = (
+        await ctx.db
+          .select({
+            defaultTimezone: tenants.defaultTimezone,
+            defaultCurrency: tenants.defaultCurrency,
+          })
+          .from(tenants)
+          .where(eq(tenants.id, ctx.tenantId!))
+          .limit(1)
+      )[0]!;
+
+      const title = input.title ?? prop.name;
+      const timezone = input.timezone ?? tenant.defaultTimezone;
+      const currency = input.currency ?? tenant.defaultCurrency;
+
+      // 2. Call Channex (3 sequential creates)
+      const channex = createChannexClient({
+        baseUrl: ctx.env.CHANNEX_API_URL,
+        apiKey: ctx.env.CHANNEX_API_KEY,
+      });
+
+      let channexProp;
+      let channexRoom;
+      let channexRate;
+      try {
+        channexProp = await channex.properties.create({
+          title,
+          currency,
+          timezone,
+          property_type: 'apartment',
+        });
+        channexRoom = await channex.roomTypes.create({
+          property_id: channexProp.id,
+          title: 'Apartment',
+          count_of_rooms: 1,
+          occ_adults: 2,
+          occ_children: 0,
+          occ_infants: 0,
+        });
+        channexRate = await channex.ratePlans.create({
+          property_id: channexProp.id,
+          room_type_id: channexRoom.id,
+          title: 'Standard',
+          currency,
+          sell_mode: 'per_room',
+          rate_mode: 'manual',
+        });
+      } catch (err) {
+        if (err instanceof ChannexError) {
+          const detail = err.payload
+            ? ` — ${JSON.stringify(err.payload).slice(0, 400)}`
+            : '';
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Channex-Anlage fehlgeschlagen (HTTP ${err.status ?? '?'})${detail}`,
+          });
+        }
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Channex-Anlage fehlgeschlagen: ${String(err)}`,
+        });
+      }
+
+      // 3. Persist mapping in a transaction
+      const channexRowId = await ctx.db.transaction(async (tx) => {
+        const [cp] = await tx
+          .insert(channexProperties)
+          .values({
+            tenantId: ctx.tenantId!,
+            channexPropertyId: channexProp.id,
+            channexRoomTypeId: channexRoom.id,
+            channexRatePlanId: channexRate.id,
+            timezone,
+            currency,
+          })
+          .returning({ id: channexProperties.id });
+        if (!cp) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+
+        await tx
+          .update(properties)
+          .set({ channexPropertyRef: cp.id, updatedAt: new Date() })
+          .where(eq(properties.id, input.propertyId));
+        return cp.id;
+      });
+
+      // 4. Queue initial sync over the next 180 days
+      const today = new Date();
+      const from = today.toISOString().slice(0, 10);
+      const toDate = new Date(today);
+      toDate.setUTCDate(toDate.getUTCDate() + 180);
+      const eventData = {
+        tenantId: ctx.tenantId!,
+        propertyId: input.propertyId,
+        from,
+        to: toDate.toISOString().slice(0, 10),
+        reason: 'onboarding.initial',
+      };
+      await ctx.inngest.send([
+        { name: 'apartment/availability.sync', data: eventData },
+        { name: 'apartment/rates.sync', data: eventData },
+      ]);
+
+      return {
+        channexPropertyRef: channexRowId,
+        channexPropertyId: channexProp.id,
+        channexRoomTypeId: channexRoom.id,
+        channexRatePlanId: channexRate.id,
+      };
     }),
 });

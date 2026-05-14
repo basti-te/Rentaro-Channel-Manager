@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { Plus, GripVertical } from 'lucide-react';
+import { Check, Link2, Plus, GripVertical } from 'lucide-react';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@cm/api';
+import { cn } from '@cm/ui';
 
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -130,6 +131,17 @@ function Grouped({
 }
 
 function PropertyRowItem({ property }: { property: PropertyRow }) {
+  const utils = trpc.useUtils();
+  const onboard = trpc.properties.onboardToChannex.useMutation({
+    onSuccess: () => {
+      toast.success(`${property.name} mit Channex verbunden`);
+      void utils.properties.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const connected = !!property.channexPropertyRef;
+
   return (
     <li className="flex items-center gap-3 px-4 py-3 hover:bg-sunken/40 transition-colors">
       <button
@@ -150,10 +162,30 @@ function PropertyRowItem({ property }: { property: PropertyRow }) {
           </div>
         )}
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] uppercase tracking-wider text-whisper">
-          Not mapped
-        </span>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {connected ? (
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 px-2 py-0.5 rounded-full',
+              'bg-positive-soft text-positive border border-positive/30',
+              'text-[10.5px] uppercase tracking-wider font-semibold',
+            )}
+          >
+            <Check className="h-3 w-3" strokeWidth={2.5} />
+            Verbunden
+          </span>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={onboard.isPending}
+            iconLeft={<Link2 className="h-3.5 w-3.5" />}
+            onClick={() => onboard.mutate({ propertyId: property.id })}
+          >
+            Verbinden
+          </Button>
+        )}
       </div>
     </li>
   );
