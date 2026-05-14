@@ -17,7 +17,7 @@ export function LoginPage() {
   const [sent, setSent] = useState(false);
 
   useEffect(() => {
-    if (auth.user) nav({ to: '/' });
+    if (auth.user) nav({ to: '/calendar' });
   }, [auth.user, nav]);
 
   async function onSubmit(e: FormEvent) {

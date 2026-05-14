@@ -76,10 +76,18 @@ export const propertiesRouter = router({
         groupId: z.string().uuid().nullable().optional(),
         description: z.string().max(2000).optional(),
         active: z.boolean().optional(),
+        defaultRateCents: z.number().int().nonnegative().nullable().optional(),
+        defaultMinStay: z.number().int().min(1).max(60).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, ...patch } = input;
+      const { id, defaultRateCents, ...rest } = input;
+      const patch = {
+        ...rest,
+        ...(defaultRateCents !== undefined && {
+          defaultRateCents: defaultRateCents === null ? null : BigInt(defaultRateCents),
+        }),
+      };
       const [row] = await ctx.db
         .update(properties)
         .set(patch)

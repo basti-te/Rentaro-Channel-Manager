@@ -17,7 +17,7 @@
 
 import { config } from 'dotenv';
 import { resolve } from 'node:path';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 
@@ -217,10 +217,24 @@ try {
       groupId: groupIds.get(a.group)!,
       name: a.name,
       sortOrder: (i + 1) * 10,
+      defaultRateCents: 8000n, // 80,00 EUR
+      defaultMinStay: 2,
     });
     created++;
   }
   console.log(`✓ Apartments: ${created} new, ${existingNames.size} already in place`);
+
+  // Backfill defaults for any apartment whose rate is still null (older seed runs)
+  const backfilled = await db
+    .update(properties)
+    .set({ defaultRateCents: 8000n, defaultMinStay: 2 })
+    .where(
+      and(eq(properties.tenantId, userTenantId), isNull(properties.defaultRateCents)),
+    )
+    .returning({ id: properties.id });
+  if (backfilled.length > 0) {
+    console.log(`↻ Backfilled default rate/min-stay on ${backfilled.length} apartment(s)`);
+  }
 
   // ── 7. Sample bookings — only seed if zero exist yet, otherwise leave the
   //       user's real data alone.

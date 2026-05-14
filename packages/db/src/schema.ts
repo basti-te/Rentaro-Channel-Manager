@@ -250,6 +250,12 @@ export const properties = pgTable(
     description: text('description'),
     sortOrder: integer('sort_order').notNull().default(0),
     active: boolean('active').notNull().default(true),
+
+    /** Default nightly rate shown on empty calendar cells. Null = unset. */
+    defaultRateCents: bigint('default_rate_cents', { mode: 'bigint' }),
+    /** Default minimum stay (nights). Shown on empty calendar cells. */
+    defaultMinStay: integer('default_min_stay').notNull().default(1),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

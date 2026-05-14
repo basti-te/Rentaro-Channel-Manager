@@ -73,56 +73,68 @@ ALTER TABLE public.audit_log             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.webhook_deliveries    ENABLE ROW LEVEL SECURITY;
 
 -- ─── SELECT policies ─────────────────────────────────────────────────────────
+-- Idempotent pattern: DROP IF EXISTS, then CREATE.
 
--- users: only your own row
+DROP POLICY IF EXISTS users_self_select ON public.users;
 CREATE POLICY users_self_select ON public.users
   FOR SELECT USING (id = auth.uid());
 
--- tenants: only tenants you belong to
+DROP POLICY IF EXISTS tenants_member_select ON public.tenants;
 CREATE POLICY tenants_member_select ON public.tenants
   FOR SELECT USING (id IN (SELECT public.current_user_tenant_ids()));
 
--- memberships: rows where you are the user, OR rows in tenants you belong to
+DROP POLICY IF EXISTS memberships_self_or_tenant_select ON public.memberships;
 CREATE POLICY memberships_self_or_tenant_select ON public.memberships
   FOR SELECT USING (
     user_id = auth.uid()
     OR tenant_id IN (SELECT public.current_user_tenant_ids())
   );
 
--- All other tenant-scoped tables: scoped by tenant_id
+DROP POLICY IF EXISTS subscriptions_tenant_select ON public.subscriptions;
 CREATE POLICY subscriptions_tenant_select ON public.subscriptions
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS channex_properties_tenant_select ON public.channex_properties;
 CREATE POLICY channex_properties_tenant_select ON public.channex_properties
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS property_groups_tenant_select ON public.property_groups;
 CREATE POLICY property_groups_tenant_select ON public.property_groups
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS properties_tenant_select ON public.properties;
 CREATE POLICY properties_tenant_select ON public.properties
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS bookings_tenant_select ON public.bookings;
 CREATE POLICY bookings_tenant_select ON public.bookings
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS sync_jobs_tenant_select ON public.sync_jobs;
 CREATE POLICY sync_jobs_tenant_select ON public.sync_jobs
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS message_templates_tenant_select ON public.message_templates;
 CREATE POLICY message_templates_tenant_select ON public.message_templates
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS messages_tenant_select ON public.messages;
 CREATE POLICY messages_tenant_select ON public.messages
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS review_templates_tenant_select ON public.review_templates;
 CREATE POLICY review_templates_tenant_select ON public.review_templates
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS reviews_tenant_select ON public.reviews;
 CREATE POLICY reviews_tenant_select ON public.reviews
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS audit_log_tenant_select ON public.audit_log;
 CREATE POLICY audit_log_tenant_select ON public.audit_log
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS webhook_deliveries_tenant_select ON public.webhook_deliveries;
 CREATE POLICY webhook_deliveries_tenant_select ON public.webhook_deliveries
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 

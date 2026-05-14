@@ -11,6 +11,9 @@ import { DashboardLayout } from './routes/_dashboard';
 import { OverviewPage } from './routes/overview';
 import { ApartmentsPage } from './routes/apartments';
 import { CalendarPage } from './routes/calendar';
+import { MessagesPage } from './routes/messages';
+import { CleaningPage } from './routes/cleaning';
+import { MenuPage } from './routes/menu';
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -50,9 +53,34 @@ const calendarRoute = createRoute({
   component: CalendarPage,
 });
 
+const messagesRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/messages',
+  component: MessagesPage,
+});
+
+const cleaningRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/cleaning',
+  component: CleaningPage,
+});
+
+const menuRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/menu',
+  component: MenuPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
-  dashboardRoute.addChildren([overviewRoute, apartmentsRoute, calendarRoute]),
+  dashboardRoute.addChildren([
+    overviewRoute,
+    apartmentsRoute,
+    calendarRoute,
+    messagesRoute,
+    cleaningRoute,
+    menuRoute,
+  ]),
 ]);
 
 export const router = createRouter({ routeTree });

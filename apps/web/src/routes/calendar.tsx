@@ -77,6 +77,9 @@ export function CalendarPage() {
             id: p.id,
             name: p.name,
             groupId: p.groupId,
+            defaultRateCents: p.defaultRateCents,
+            defaultMinStay: p.defaultMinStay,
+            currency: 'EUR',
           }))}
           bookings={(bookingsQ.data ?? []).map((b) => ({
             id: b.id,

@@ -13,12 +13,12 @@ export function PropertyRail({
   name,
   groupColor,
   syncState = 'idle',
-  lastSyncRelative,
+  lastSyncRelative: _lastSyncRelative,
 }: PropertyRailProps) {
   return (
     <div
       className={cn(
-        'sticky left-0 z-10 flex items-center gap-2 px-3',
+        'sticky left-0 z-10 flex items-center gap-1 pl-1.5 pr-1',
         'bg-surface border-r border-line-strong border-b border-line',
         'group/rail',
       )}
@@ -31,12 +31,13 @@ export function PropertyRail({
         style={{ background: groupColor ?? 'rgb(var(--line-strong))' }}
       />
 
-      {/* Drag handle — visible on row hover */}
+      {/* Drag handle — visible on row hover. Hidden below md (no hover on touch). */}
       <button
         type="button"
         className={cn(
-          'flex-shrink-0 text-whisper opacity-0 group-hover/rail:opacity-100',
-          'transition-opacity hover:text-muted cursor-grab active:cursor-grabbing',
+          'hidden md:inline-flex flex-shrink-0 text-whisper opacity-0',
+          'group-hover/rail:opacity-100 transition-opacity hover:text-muted',
+          'cursor-grab active:cursor-grabbing',
         )}
         tabIndex={-1}
         aria-label="Drag to reorder"
@@ -44,16 +45,11 @@ export function PropertyRail({
         <GripVertical className="h-4 w-4" strokeWidth={1.75} />
       </button>
 
-      {/* Name + last sync */}
+      {/* Apartment name */}
       <div className="min-w-0 flex-1">
-        <div className="text-[13.5px] font-medium text-ink leading-none truncate">
+        <div className="text-[12.5px] font-medium text-ink leading-none truncate">
           {name}
         </div>
-        {lastSyncRelative && (
-          <div className="mt-1 text-[10px] text-whisper truncate num">
-            sync · {lastSyncRelative}
-          </div>
-        )}
       </div>
 
       {/* Sync button */}
@@ -96,18 +92,18 @@ export function GroupHeader({ name, color, count, rightFill }: GroupHeaderProps)
   return (
     <div className="flex border-b border-line bg-canvas/80 backdrop-blur-[2px]">
       <div
-        className="sticky left-0 z-10 flex items-center gap-2.5 bg-canvas/95 border-r border-line"
-        style={{ width: RAIL_W, height: 32, paddingLeft: 14 }}
+        className="sticky left-0 z-10 flex items-center gap-2 bg-canvas/95 border-r border-line"
+        style={{ width: RAIL_W, height: 32, paddingLeft: 10 }}
       >
         <span
           aria-hidden
-          className="h-2 w-2 rounded-[2px]"
+          className="flex-shrink-0 h-2 w-2 rounded-[2px]"
           style={{ background: color }}
         />
-        <h3 className="display text-[12.5px] font-medium text-ink tracking-tight">
+        <h3 className="display text-[12px] font-medium text-ink tracking-tight truncate min-w-0">
           {name}
         </h3>
-        <span className="num text-[10.5px] text-whisper">{count}</span>
+        <span className="num text-[10px] text-whisper flex-shrink-0">{count}</span>
       </div>
       {/* Visual continuation rule across the scroll area */}
       <div

@@ -35,14 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signInWithEmail: async (email) => {
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: `${window.location.origin}/` },
+        options: { emailRedirectTo: `${window.location.origin}/calendar` },
       });
       return error ? { error: error.message } : {};
     },
     signInWithGoogle: async () => {
       await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: `${window.location.origin}/` },
+        options: { redirectTo: `${window.location.origin}/calendar` },
       });
     },
     signOut: async () => {

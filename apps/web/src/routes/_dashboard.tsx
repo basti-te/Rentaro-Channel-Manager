@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import {
+  Building2,
   Calendar,
   LayoutGrid,
   MessageSquare,
   Settings,
+  SprayCan,
   LogOut,
   ChevronRight,
   type LucideIcon,
@@ -12,6 +14,7 @@ import {
 import { cn } from '@cm/ui';
 
 import { Brand } from '../components/Brand';
+import { MobileTabBar, MOBILE_TAB_BAR_H } from '../components/MobileTabBar';
 import { useAuth } from '../lib/auth';
 import { trpc } from '../lib/trpc';
 
@@ -20,14 +23,18 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   badge?: string;
+  /** If true, the link is non-navigable (route not built yet). Badge alone
+   *  is just informational and doesn't disable. */
+  disabled?: boolean;
 }
 
 const NAV: NavItem[] = [
-  { to: '/', label: 'Overview', icon: LayoutGrid },
-  { to: '/calendar', label: 'Calendar', icon: Calendar },
-  { to: '/apartments', label: 'Apartments', icon: LayoutGrid },
-  { to: '/messages', label: 'Messages', icon: MessageSquare, badge: 'Phase 8' },
-  { to: '/settings', label: 'Settings', icon: Settings, badge: 'soon' },
+  { to: '/calendar',   label: 'Calendar',   icon: Calendar },
+  { to: '/apartments', label: 'Apartments', icon: Building2 },
+  { to: '/',           label: 'Overview',   icon: LayoutGrid },
+  { to: '/messages',   label: 'Messages',   icon: MessageSquare },
+  { to: '/cleaning',   label: 'Cleaning',   icon: SprayCan },
+  { to: '/settings',   label: 'Settings',   icon: Settings, badge: 'soon', disabled: true },
 ];
 
 export function DashboardLayout() {
@@ -74,15 +81,32 @@ export function DashboardLayout() {
   const tenant = meQ.data?.memberships[0];
 
   return (
-    <div className="grain min-h-dvh flex">
-      <Sidebar
-        tenantName={tenant?.tenantName ?? 'Workspace'}
-        userEmail={auth.user.email ?? ''}
-        onSignOut={() => auth.signOut().then(() => nav({ to: '/login' }))}
-      />
-      <main className="flex-1 min-w-0">
+    <div
+      className="grain min-h-dvh flex"
+      style={
+        // CSS variable used both for the mobile-only main padding and the
+        // calendar viewport-height math (apps/web/src/routes/calendar.tsx).
+        {
+          ['--mobile-bar-h' as string]:
+            `calc(${MOBILE_TAB_BAR_H}px + env(safe-area-inset-bottom, 0px))`,
+        }
+      }
+    >
+      {/* Desktop sidebar — hidden on mobile */}
+      <div className="hidden md:flex">
+        <Sidebar
+          tenantName={tenant?.tenantName ?? 'Workspace'}
+          userEmail={auth.user.email ?? ''}
+          onSignOut={() => auth.signOut().then(() => nav({ to: '/login' }))}
+        />
+      </div>
+
+      <main className="flex-1 min-w-0 pb-[var(--mobile-bar-h)] md:pb-0">
         <Outlet />
       </main>
+
+      {/* Mobile bottom tab bar — hidden on md+ */}
+      <MobileTabBar />
     </div>
   );
 }
@@ -163,7 +187,7 @@ function Sidebar({
 
 function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   const Icon = item.icon;
-  const disabled = !!item.badge; // routes with phase badges aren't built yet
+  const disabled = !!item.disabled;
 
   const className = cn(
     'group relative flex items-center gap-3 rounded-md px-3 py-2 text-[14px]',
@@ -237,7 +261,7 @@ export function PageHeader({
   action?: import('react').ReactNode;
 }) {
   return (
-    <div className="px-8 pt-7 pb-6 border-b border-line bg-canvas">
+    <div className="px-4 sm:px-6 md:px-8 pt-5 md:pt-7 pb-5 md:pb-6 border-b border-line bg-canvas">
       {breadcrumb && breadcrumb.length > 0 && (
         <nav className="flex items-center gap-1.5 text-[12px] text-muted mb-3">
           {breadcrumb.map((b, i) => (
@@ -250,13 +274,15 @@ export function PageHeader({
           ))}
         </nav>
       )}
-      <div className="flex items-end justify-between gap-6 flex-wrap">
+      <div className="flex items-end justify-between gap-4 md:gap-6 flex-wrap">
         <div className="min-w-0">
-          <h1 className="display text-[34px] font-medium text-ink leading-none">
+          <h1 className="display text-[26px] md:text-[34px] font-medium text-ink leading-none">
             {title}
           </h1>
           {subtitle && (
-            <p className="mt-2 text-[14px] text-muted max-w-[60ch]">{subtitle}</p>
+            <p className="mt-1.5 md:mt-2 text-[13px] md:text-[14px] text-muted max-w-[60ch]">
+              {subtitle}
+            </p>
           )}
         </div>
         {action && <div className="flex-shrink-0">{action}</div>}

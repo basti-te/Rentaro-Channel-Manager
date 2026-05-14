@@ -27,6 +27,9 @@ interface Property {
   id: string;
   name: string;
   groupId: string | null;
+  defaultRateCents: bigint | number | null;
+  defaultMinStay: number;
+  currency?: string;
 }
 
 interface Booking {
@@ -90,10 +93,31 @@ export function Calendar({ start, dayCount, groups, properties, bookings }: Prop
     return m;
   }, [bookings]);
 
+  // Precompute occupied day-indices per property so we know which cells are
+  // free (= eligible for showing rate + min-stay text).
+  const occupiedByProperty = useMemo(() => {
+    const m = new Map<string, Set<number>>();
+    for (const b of bookings) {
+      const ci = differenceInCalendarDays(dateFromISO(b.checkin), start);
+      const co = differenceInCalendarDays(dateFromISO(b.checkout), start);
+      const from = Math.max(0, ci);
+      const to = Math.min(dayCount, co);
+      if (to <= from) continue;
+      if (!m.has(b.propertyId)) m.set(b.propertyId, new Set());
+      const set = m.get(b.propertyId)!;
+      for (let d = from; d < to; d++) set.add(d);
+    }
+    return m;
+  }, [bookings, start, dayCount]);
+
   return (
     <div
-      className="relative overflow-auto bg-canvas border-t border-line"
-      style={{ height: 'calc(100dvh - 156px)' /* viewport minus header */ }}
+      className={cn(
+        'relative overflow-auto bg-canvas border-t border-line',
+        // Mobile: subtract page header (156px) AND bottom tab bar (--mobile-bar-h).
+        // Desktop: subtract header only.
+        'h-[calc(100dvh-156px-var(--mobile-bar-h,0px))] md:h-[calc(100dvh-156px)]',
+      )}
     >
       <div style={{ width: totalGridWidth }} className="min-w-full">
         {/* ── Header strip ─────────────────────────────────────────────── */}
@@ -122,6 +146,7 @@ export function Calendar({ start, dayCount, groups, properties, bookings }: Prop
                 days={days}
                 todayIdx={todayIdx}
                 bookings={bookingsByProperty.get(p.id) ?? []}
+                occupied={occupiedByProperty.get(p.id) ?? new Set()}
                 start={start}
                 dayCount={dayCount}
               />
@@ -219,6 +244,7 @@ function PropertyRow({
   days,
   todayIdx,
   bookings,
+  occupied,
   start,
   dayCount,
 }: {
@@ -227,9 +253,13 @@ function PropertyRow({
   days: Date[];
   todayIdx: number;
   bookings: Booking[];
+  occupied: Set<number>;
   start: Date;
   dayCount: number;
 }) {
+  const rateLabel = formatRate(property.defaultRateCents, property.currency);
+  const minStay = property.defaultMinStay;
+
   return (
     <div className="flex relative group/row">
       <PropertyRail name={property.name} groupColor={groupColor} />
@@ -239,16 +269,39 @@ function PropertyRow({
         {days.map((d, i) => {
           const wknd = isWeekend(d);
           const isToday = i === todayIdx;
+          const isFree = !occupied.has(i);
           return (
             <div
               key={i}
               className={cn(
+                'flex flex-col items-center justify-center',
                 'border-r border-b border-line/60',
                 wknd && 'bg-sunken/30',
                 isToday && 'bg-brand-soft/40',
               )}
               style={{ width: DAY_W, height: ROW_H }}
-            />
+            >
+              {isFree && rateLabel && (
+                <span
+                  className={cn(
+                    'num text-[10.5px] leading-none',
+                    isToday ? 'text-brand/70' : 'text-whisper',
+                  )}
+                >
+                  {rateLabel}
+                </span>
+              )}
+              {isFree && minStay > 1 && (
+                <span
+                  className={cn(
+                    'text-[9px] leading-none mt-1 tracking-[0.04em]',
+                    isToday ? 'text-brand/60' : 'text-whisper/70',
+                  )}
+                >
+                  <span className="num">{minStay}</span> D
+                </span>
+              )}
+            </div>
           );
         })}
 
@@ -261,19 +314,40 @@ function PropertyRow({
           />
         )}
 
-        {/* Booking blocks */}
+        {/* Booking blocks — half-cell semantics:
+            Check-in at ~15:00 → block starts at middle of checkin cell.
+            Check-out at ~11:00 → block ends at middle of checkout cell.
+            A Thu→Sun stay therefore spans from mid-Thu to mid-Sun, occupying
+            the right half of Thu, all of Fri+Sat, and the left half of Sun. */}
         {bookings.map((b) => {
           const ci = dateFromISO(b.checkin);
           const co = dateFromISO(b.checkout);
-          const startCol = Math.max(0, differenceInCalendarDays(ci, start));
-          const lastCol = Math.min(dayCount, differenceInCalendarDays(co, start));
-          const span = lastCol - startCol;
-          if (span <= 0) return null; // outside the viewport
+          const checkinIdx = differenceInCalendarDays(ci, start);
+          const checkoutIdx = differenceInCalendarDays(co, start);
+
+          let leftFrac = checkinIdx + 0.5;
+          let rightFrac = checkoutIdx + 0.5;
+
+          // Off-viewport entirely
+          if (rightFrac <= 0 || leftFrac >= dayCount) return null;
+
+          // Clip + track truncation so we render square edges where the block
+          // continues beyond the visible range.
+          const truncatedLeft = leftFrac < 0;
+          const truncatedRight = rightFrac > dayCount;
+          if (truncatedLeft) leftFrac = 0;
+          if (truncatedRight) rightFrac = dayCount;
+
+          const left = leftFrac * DAY_W;
+          const width = (rightFrac - leftFrac) * DAY_W;
+
           return (
             <BookingBlock
               key={b.id}
-              startCol={startCol}
-              span={span}
+              left={left}
+              width={width}
+              truncatedLeft={truncatedLeft}
+              truncatedRight={truncatedRight}
               source={b.source}
               guestName={b.guestName}
               priceCents={b.priceCents}
@@ -287,3 +361,17 @@ function PropertyRow({
 }
 
 export { formatISODate };
+
+function formatRate(
+  cents: bigint | number | null | undefined,
+  currency: string | undefined,
+): string | null {
+  if (cents == null) return null;
+  const value = typeof cents === 'bigint' ? Number(cents) : cents;
+  if (!Number.isFinite(value) || value < 0) return null;
+  const symbol = !currency || currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency;
+  const v = value / 100;
+  // Tight format: "€80" for integer, "€79.5" for fractional, "€1.2k" for ≥1000
+  if (v >= 1000) return `${symbol}${(v / 1000).toFixed(1)}k`;
+  return `${symbol}${Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1)}`;
+}

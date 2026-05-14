@@ -1,6 +1,5 @@
 import { cn } from '@cm/ui';
 import { Lock } from 'lucide-react';
-import { DAY_W } from './utils';
 
 export type BookingSource =
   | 'internal'
@@ -11,8 +10,13 @@ export type BookingSource =
   | 'block';
 
 interface Props {
-  startCol: number; // 0-indexed day index in the viewport
-  span: number; // number of nights (≥ 1)
+  /** Absolute left offset in px within the day-cells container. */
+  left: number;
+  /** Width in px. */
+  width: number;
+  /** Whether the block visually extends past the viewport on either side. */
+  truncatedLeft?: boolean;
+  truncatedRight?: boolean;
   source: BookingSource;
   guestName?: string | null;
   priceCents?: bigint | number | null;
@@ -68,8 +72,10 @@ const sourceStyles: Record<
 };
 
 export function BookingBlock({
-  startCol,
-  span,
+  left,
+  width,
+  truncatedLeft,
+  truncatedRight,
   source,
   guestName,
   priceCents,
@@ -77,9 +83,6 @@ export function BookingBlock({
 }: Props) {
   const s = sourceStyles[source];
   const isBlock = source === 'block';
-  const inset = 4; // gap between block and cell edges
-  const left = startCol * DAY_W + inset;
-  const width = span * DAY_W - inset * 2;
 
   const display =
     guestName ?? (isBlock ? 'Geblockt' : 'Buchung');
@@ -94,7 +97,11 @@ export function BookingBlock({
       tabIndex={0}
       className={cn(
         'absolute top-[6px] bottom-[6px] flex items-center gap-2 px-2',
-        'rounded-md border overflow-hidden cursor-pointer',
+        'border overflow-hidden cursor-pointer',
+        // Rounded only on the side where the booking actually starts/ends.
+        // If clipped by the viewport, that edge stays square to signal "extends".
+        truncatedLeft ? 'rounded-l-none' : 'rounded-l-md',
+        truncatedRight ? 'rounded-r-none' : 'rounded-r-md',
         'transition-[transform,box-shadow] duration-150 ease-out-snap',
         'hover:shadow-md hover:-translate-y-px',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
