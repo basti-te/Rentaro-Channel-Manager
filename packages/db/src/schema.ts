@@ -95,6 +95,15 @@ export const syncJobStatusEnum = pgEnum('sync_job_status', [
  */
 export const ariKindEnum = pgEnum('ari_kind', ['availability', 'rates']);
 
+/**
+ * Who owns nightly rates for a tenant.
+ *   - 'pms'       → we push rates from rate_overrides / property defaults
+ *   - 'pricelabs' → PriceLabs writes rates straight into Channex (ADR 0006);
+ *                   the flusher then suppresses the `rate` field but still
+ *                   pushes PMS-owned restrictions (min/max stay, stop-sell…).
+ */
+export const rateSourceEnum = pgEnum('rate_source', ['pms', 'pricelabs']);
+
 export const messageChannelEnum = pgEnum('message_channel', [
   'sms',
   'airbnb',
@@ -134,6 +143,12 @@ export const tenants = pgTable('tenants', {
   defaultCheckinTime: text('default_checkin_time').notNull().default('15:00'),
   /** Default check-out time, format HH:mm. */
   defaultCheckoutTime: text('default_checkout_time').notNull().default('11:00'),
+
+  /**
+   * Rate ownership. 'pms' (default) = we push rates; 'pricelabs' = PriceLabs
+   * owns rates in Channex directly and we only push restrictions.
+   */
+  rateSource: rateSourceEnum('rate_source').notNull().default('pms'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

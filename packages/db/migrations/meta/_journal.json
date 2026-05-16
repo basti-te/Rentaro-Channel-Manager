@@ -50,6 +50,13 @@
       "when": 1778951138830,
       "tag": "0006_red_phantom_reporter",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1778951682094,
+      "tag": "0007_cynical_magneto",
+      "breakpoints": true
     }
   ]
 }

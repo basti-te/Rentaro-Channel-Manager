@@ -16,6 +16,7 @@ import {
   channexProperties,
   properties,
   rateOverrides,
+  tenants,
   type Database,
 } from '@cm/db';
 import type { AvailabilityUpdate, RestrictionUpdate } from '@cm/channex';
@@ -36,6 +37,8 @@ export interface PropertyMapping {
   channexRatePlanId: string;
   defaultRateCents: number | null;
   defaultMinStay: number;
+  /** 'pricelabs' → suppress the rate field; restrictions still PMS-driven. */
+  rateSource: 'pms' | 'pricelabs';
 }
 
 /** Adds one day to a YYYY-MM-DD string. UTC-safe. */
@@ -107,9 +110,11 @@ export async function loadMappings(
       channexRatePlanId: channexProperties.channexRatePlanId,
       defaultRateCents: properties.defaultRateCents,
       defaultMinStay: properties.defaultMinStay,
+      rateSource: tenants.rateSource,
     })
     .from(properties)
     .innerJoin(channexProperties, eq(channexProperties.id, properties.channexPropertyRef))
+    .innerJoin(tenants, eq(tenants.id, properties.tenantId))
     .where(inArray(properties.id, propertyIds));
 
   const map = new Map<string, PropertyMapping>();
@@ -122,6 +127,7 @@ export async function loadMappings(
       channexRatePlanId: r.channexRatePlanId,
       defaultRateCents: r.defaultRateCents != null ? Number(r.defaultRateCents) : null,
       defaultMinStay: r.defaultMinStay,
+      rateSource: r.rateSource,
     });
   }
   return map;
@@ -241,11 +247,16 @@ export async function resolveRateValues(
       );
     const byDay = new Map(overrides.map((o) => [o.date, o]));
 
+    // PriceLabs owns rates for this tenant — never emit a rate, but keep
+    // pushing PMS-owned restrictions (min/max stay, stop-sell, CTA/CTD).
+    const pricelabs = m.rateSource === 'pricelabs';
+
     const effectiveAt = (day: string): DayRate => {
       const o = byDay.get(day);
       return {
-        rate:
-          o?.rateCents != null
+        rate: pricelabs
+          ? null
+          : o?.rateCents != null
             ? Number(o.rateCents)
             : m.defaultRateCents, // may be null → entry omits `rate`
         minStay: o?.minStay ?? m.defaultMinStay,

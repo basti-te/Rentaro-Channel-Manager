@@ -26,6 +26,7 @@ export const meRouter = router({
         defaultCheckinTime: tenants.defaultCheckinTime,
         defaultCheckoutTime: tenants.defaultCheckoutTime,
         defaultCurrency: tenants.defaultCurrency,
+        rateSource: tenants.rateSource,
       })
       .from(memberships)
       .leftJoin(tenants, eq(tenants.id, memberships.tenantId))

@@ -5,6 +5,7 @@ import { propertiesRouter } from './routers/properties';
 import { bookingsRouter } from './routers/bookings';
 import { syncRouter } from './routers/sync';
 import { ratesRouter } from './routers/rates';
+import { settingsRouter } from './routers/settings';
 
 export const appRouter = router({
   me: meRouter,
@@ -13,6 +14,7 @@ export const appRouter = router({
   bookings: bookingsRouter,
   sync: syncRouter,
   rates: ratesRouter,
+  settings: settingsRouter,
 });
 
 export type AppRouter = typeof appRouter;
