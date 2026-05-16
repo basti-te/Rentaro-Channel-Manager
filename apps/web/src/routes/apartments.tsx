@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { Check, Link2, Plus, GripVertical } from 'lucide-react';
+import { Check, Link2, Plus, GripVertical, FlaskConical } from 'lucide-react';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@cm/api';
 import { cn } from '@cm/ui';
@@ -20,6 +20,13 @@ export function ApartmentsPage() {
   const utils = trpc.useUtils();
   const propsQ = trpc.properties.list.useQuery();
   const groupsQ = trpc.propertyGroups.list.useQuery();
+  // Dev-only: which connected properties can receive a simulated booking
+  // (have a CRS app connected in the Channex sandbox).
+  const crsQ = trpc.bookings.crsCapableProperties.useQuery(undefined, {
+    enabled: import.meta.env.DEV,
+    staleTime: 5 * 60_000,
+  });
+  const crsCapable = new Set(crsQ.data ?? []);
 
   const [showNew, setShowNew] = useState(false);
 
@@ -48,6 +55,7 @@ export function ApartmentsPage() {
           <Grouped
             groups={groupsQ.data ?? []}
             properties={propsQ.data ?? []}
+            crsCapable={crsCapable}
           />
         )}
       </div>
@@ -69,9 +77,11 @@ export function ApartmentsPage() {
 function Grouped({
   groups,
   properties,
+  crsCapable,
 }: {
   groups: Array<{ id: string; name: string; color: string }>;
   properties: PropertyRow[];
+  crsCapable: Set<string>;
 }) {
   // Bucket properties by group
   const grouped = new Map<string | null, PropertyRow[]>();
@@ -119,7 +129,11 @@ function Grouped({
             <Card className="overflow-hidden">
               <ul className="divide-y divide-line">
                 {s.items.map((p) => (
-                  <PropertyRowItem key={p.id} property={p} />
+                  <PropertyRowItem
+                    key={p.id}
+                    property={p}
+                    crsCapable={crsCapable.has(p.id)}
+                  />
                 ))}
               </ul>
             </Card>
@@ -130,7 +144,13 @@ function Grouped({
   );
 }
 
-function PropertyRowItem({ property }: { property: PropertyRow }) {
+function PropertyRowItem({
+  property,
+  crsCapable,
+}: {
+  property: PropertyRow;
+  crsCapable: boolean;
+}) {
   const utils = trpc.useUtils();
   const onboard = trpc.properties.onboardToChannex.useMutation({
     onSuccess: () => {
@@ -140,7 +160,11 @@ function PropertyRowItem({ property }: { property: PropertyRow }) {
     onError: (e) => toast.error(e.message),
   });
 
+  const [showSimulate, setShowSimulate] = useState(false);
   const connected = !!property.channexPropertyRef;
+  // Only offer the simulator where Channex will actually accept a CRS
+  // booking (property has a CRS app connected). Avoids a confusing 403.
+  const canSimulate = import.meta.env.DEV && crsCapable;
 
   return (
     <li className="flex items-center gap-3 px-4 py-3 hover:bg-sunken/40 transition-colors">
@@ -164,16 +188,33 @@ function PropertyRowItem({ property }: { property: PropertyRow }) {
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
         {connected ? (
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 px-2 py-0.5 rounded-full',
-              'bg-positive-soft text-positive border border-positive/30',
-              'text-[10.5px] uppercase tracking-wider font-semibold',
+          <>
+            {canSimulate && (
+              <button
+                type="button"
+                onClick={() => setShowSimulate(true)}
+                className={cn(
+                  'inline-flex items-center gap-1 px-2 py-1 rounded-md',
+                  'text-whisper hover:text-ink hover:bg-sunken',
+                  'text-[11px] transition-colors',
+                )}
+                title="Sandbox: OTA-Buchung simulieren"
+              >
+                <FlaskConical className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Simulieren
+              </button>
             )}
-          >
-            <Check className="h-3 w-3" strokeWidth={2.5} />
-            Verbunden
-          </span>
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full',
+                'bg-positive-soft text-positive border border-positive/30',
+                'text-[10.5px] uppercase tracking-wider font-semibold',
+              )}
+            >
+              <Check className="h-3 w-3" strokeWidth={2.5} />
+              Verbunden
+            </span>
+          </>
         ) : (
           <Button
             type="button"
@@ -187,7 +228,185 @@ function PropertyRowItem({ property }: { property: PropertyRow }) {
           </Button>
         )}
       </div>
+
+      {showSimulate && (
+        <SimulateBookingDialog
+          propertyId={property.id}
+          propertyName={property.name}
+          onClose={() => setShowSimulate(false)}
+        />
+      )}
     </li>
+  );
+}
+
+function SimulateBookingDialog({
+  propertyId,
+  propertyName,
+  onClose,
+}: {
+  propertyId: string;
+  propertyName: string;
+  onClose: () => void;
+}) {
+  // Default to a stay 30 days out so it doesn't collide with existing bookings.
+  const defaultArrival = new Date();
+  defaultArrival.setUTCDate(defaultArrival.getUTCDate() + 30);
+  const defaultDeparture = new Date(defaultArrival);
+  defaultDeparture.setUTCDate(defaultDeparture.getUTCDate() + 2);
+
+  const [arrival, setArrival] = useState(defaultArrival.toISOString().slice(0, 10));
+  const [departure, setDeparture] = useState(defaultDeparture.toISOString().slice(0, 10));
+  const [otaName, setOtaName] = useState<'Offline' | 'Airbnb' | 'BookingCom' | 'Expedia'>('Airbnb');
+  const [nightlyRate, setNightlyRate] = useState('80.00');
+  const [guestName, setGuestName] = useState('Sandbox');
+  const [guestSurname, setGuestSurname] = useState('Tester');
+  const [adults, setAdults] = useState(2);
+
+  const simulate = trpc.bookings.simulateChannexBooking.useMutation({
+    onSuccess: (res) => {
+      toast.success(
+        `Buchung in Channex angelegt (${res.otaName}). Sync läuft – Anzeige im Kalender folgt.`,
+      );
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    simulate.mutate({
+      propertyId,
+      arrivalDate: arrival,
+      departureDate: departure,
+      otaName,
+      nightlyRate,
+      guestName: guestName.trim() || 'Sandbox',
+      guestSurname: guestSurname.trim() || 'Tester',
+      adults,
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-[460px] bg-surface rounded-xl shadow-lg border border-line animate-fade-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 pt-6 pb-2">
+          <div className="flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-brand" strokeWidth={1.75} />
+            <h2 className="display text-[20px] font-medium text-ink">
+              Sandbox-Buchung simulieren
+            </h2>
+          </div>
+          <p className="mt-1 text-[12.5px] text-muted">
+            Legt eine OTA-Buchung für <span className="font-medium text-ink">{propertyName}</span>{' '}
+            direkt in Channex an und triggert anschließend den Feed-Ingest.
+          </p>
+        </div>
+        <form onSubmit={submit} className="px-6 pb-6 pt-4 space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="sim-ota">OTA</Label>
+            <select
+              id="sim-ota"
+              value={otaName}
+              onChange={(e) => setOtaName(e.target.value as typeof otaName)}
+              className="h-10 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none transition-colors"
+            >
+              <option value="Airbnb">Airbnb</option>
+              <option value="BookingCom">Booking.com</option>
+              <option value="Expedia">Expedia</option>
+              <option value="Offline">Offline</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="sim-arr">Anreise</Label>
+              <Input
+                id="sim-arr"
+                type="date"
+                value={arrival}
+                onChange={(e) => setArrival(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sim-dep">Abreise</Label>
+              <Input
+                id="sim-dep"
+                type="date"
+                value={departure}
+                onChange={(e) => setDeparture(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="sim-rate">Preis / Nacht (EUR)</Label>
+              <Input
+                id="sim-rate"
+                type="text"
+                inputMode="decimal"
+                value={nightlyRate}
+                onChange={(e) => setNightlyRate(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sim-adults">Erwachsene</Label>
+              <Input
+                id="sim-adults"
+                type="number"
+                min={1}
+                max={20}
+                value={adults}
+                onChange={(e) => setAdults(Number(e.target.value) || 1)}
+                required
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="sim-name">Vorname Gast</Label>
+              <Input
+                id="sim-name"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sim-surname">Nachname Gast</Label>
+              <Input
+                id="sim-surname"
+                value={guestSurname}
+                onChange={(e) => setGuestSurname(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Abbrechen
+            </Button>
+            <Button
+              type="submit"
+              variant="brand"
+              loading={simulate.isPending}
+              iconLeft={<FlaskConical className="h-4 w-4" />}
+            >
+              Buchung anlegen
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

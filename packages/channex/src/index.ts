@@ -65,7 +65,7 @@ export {
 } from './errors';
 export type { AvailabilityUpdate } from './schemas/availability';
 export type { RestrictionUpdate } from './schemas/restriction';
-export type { Booking, BookingRevision } from './schemas/booking';
+export type { Booking, BookingRevision, BookingCreate } from './schemas/booking';
 export type { Webhook, WebhookCreate, WebhookDelivery, WebhookEvent } from './schemas/webhook';
 export { BOOKING_EVENTS } from './schemas/webhook';
 export type { Property, PropertyCreate } from './schemas/property';

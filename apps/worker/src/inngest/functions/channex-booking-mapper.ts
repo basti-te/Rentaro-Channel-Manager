@@ -15,7 +15,7 @@ export type BookingSource = 'internal' | 'airbnb' | 'booking_com' | 'expedia' | 
  *
  * https://docs.channex.io/api-v.1-documentation/bookings-collection
  */
-export function resolveSource(otaName?: string, uniqueId?: string): BookingSource {
+export function resolveSource(otaName?: string | null, uniqueId?: string | null): BookingSource {
   const name = otaName?.toLowerCase() ?? '';
   if (name === 'airbnb' || name.includes('airbnb')) return 'airbnb';
   if (name === 'bookingcom' || name.includes('booking')) return 'booking_com';
@@ -32,7 +32,7 @@ export function resolveSource(otaName?: string, uniqueId?: string): BookingSourc
 }
 
 /** Channex amount comes as string ("120.50") or number — to BIGINT cents. */
-export function amountToCents(raw: string | number | undefined): bigint | null {
+export function amountToCents(raw: string | number | null | undefined): bigint | null {
   if (raw == null) return null;
   const v = typeof raw === 'string' ? parseFloat(raw) : raw;
   if (!Number.isFinite(v)) return null;

@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { bookings, channexProperties, createDb } from '@cm/db';
-import { createChannexClient, ChannexError } from '@cm/channex';
+import { createChannexClient, ChannexError, type Booking as ChannexBooking } from '@cm/channex';
 import { env } from '../../env';
 import { inngest } from '../client';
 import { mapChannexBooking } from './channex-booking-mapper';
@@ -62,24 +62,20 @@ export const ingestBookings = inngest.createFunction(
       // ── Process each revision ───────────────────────────────────────
       for (const rev of revisions) {
         const result = await step.run(`upsert-${rev.id}`, async () => {
-          // The feed entries usually carry the full booking inline (`rev.booking`)
-          // but per docs we must not trust it — re-fetch by booking_id for
-          // authoritative state.
-          if (!rev.booking_id) {
+          // Each revision carries the full booking shape inside `attributes`.
+          // The top-level `id` is the revision id; the booking's own UUID is
+          // `attributes.booking_id`. Build a synthetic Booking object so the
+          // existing mapper can consume it without a re-fetch.
+          const bookingId = rev.attributes.booking_id;
+          if (!bookingId) {
             return { skipped: true, reason: 'missing_booking_id' } as const;
           }
 
-          const booking = await (async () => {
-            try {
-              return await channex.bookings.get(rev.booking_id!);
-            } catch (err) {
-              if (err instanceof ChannexError && err.status === 404) {
-                return null; // booking gone — treat as skipped
-              }
-              throw err;
-            }
-          })();
-          if (!booking) return { skipped: true, reason: 'booking_not_found' } as const;
+          const booking: ChannexBooking = {
+            id: bookingId,
+            type: 'booking',
+            attributes: rev.attributes,
+          };
 
           const row = mapChannexBooking(booking, rev.id);
           if (!row.channexPropertyId) {

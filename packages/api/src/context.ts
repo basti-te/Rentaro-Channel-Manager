@@ -43,6 +43,18 @@ export type AppEvents = {
       reason?: string;
     };
   };
+  /**
+   * Pull unacknowledged booking revisions from the Channex feed. In production
+   * this is fired by the global webhook handler; in sandbox the simulator
+   * mutation fires it manually because Channex sandbox doesn't deliver
+   * webhooks back to us.
+   */
+  'channex/booking.ingest': {
+    data: {
+      reason: string;
+      hintBookingId?: string;
+    };
+  };
 };
 
 type AppInngest = ReturnType<typeof getInngest>;

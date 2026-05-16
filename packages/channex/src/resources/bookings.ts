@@ -1,11 +1,22 @@
 import { z } from 'zod';
 import type { ChannexHttpClient } from '../client';
 import { envelope } from '../schemas/common';
-import { Booking, BookingRevision } from '../schemas/booking';
+import { Booking, BookingCreate, BookingRevision } from '../schemas/booking';
 
 const ListResponse = envelope(z.array(Booking));
 const SingleResponse = envelope(Booking);
 const RevisionListResponse = envelope(z.array(BookingRevision));
+
+/** Expand [arrival, departure) into one entry per night with the given rate. */
+function buildDaysMap(arrival: string, departure: string, rate: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const a = new Date(`${arrival}T00:00:00Z`);
+  const d = new Date(`${departure}T00:00:00Z`);
+  for (let t = a.getTime(); t < d.getTime(); t += 86400000) {
+    out[new Date(t).toISOString().slice(0, 10)] = rate;
+  }
+  return out;
+}
 
 interface FeedOptions {
   /** Max revisions per call. Channex default 10, max 100. */
@@ -57,6 +68,64 @@ export class BookingsAPI {
       path: `/bookings/${id}`,
     });
     return SingleResponse.parse(raw).data!;
+  }
+
+  /**
+   * Create a booking via the Channex Booking CRS API.
+   * Used by the sandbox simulator to mint OTA-like reservations for E2E
+   * testing of the inbound ingestion pipeline. The response carries the new
+   * booking id; the actual booking shows up in the revisions feed shortly
+   * after (async on Channex's side).
+   *
+   * https://docs.channex.io/api-v.1-documentation/booking-crs-api
+   */
+  async create(input: BookingCreate): Promise<{ id: string }> {
+    const body = {
+      booking: {
+        property_id: input.propertyId,
+        ota_reservation_code: input.otaReservationCode ?? `SIM-${Date.now()}`,
+        ota_name: input.otaName ?? 'Offline',
+        arrival_date: input.arrivalDate,
+        departure_date: input.departureDate,
+        currency: input.currency ?? 'EUR',
+        ota_commission: '0.00',
+        notes: input.notes,
+        customer: {
+          name: input.guest.name,
+          surname: input.guest.surname,
+          mail: input.guest.mail,
+          phone: input.guest.phone,
+          country: input.guest.country,
+        },
+        rooms: [
+          {
+            room_type_id: input.roomTypeId,
+            rate_plan_id: input.ratePlanId,
+            days: buildDaysMap(input.arrivalDate, input.departureDate, input.nightlyRate),
+            guests: [{ name: input.guest.name, surname: input.guest.surname }],
+            occupancy: {
+              adults: input.adults ?? 2,
+              children: input.children ?? 0,
+              infants: input.infants ?? 0,
+              ages: [],
+            },
+          },
+        ],
+        services: [],
+        deposits: [],
+      },
+    };
+
+    const raw = await this.http.request<{ data?: { id?: string } }>({
+      method: 'POST',
+      path: '/bookings',
+      body,
+    });
+    const id = raw?.data?.id;
+    if (!id) {
+      throw new Error('Channex POST /bookings returned no booking id');
+    }
+    return { id };
   }
 
   /** Revisions feed — preferred ingestion path. */

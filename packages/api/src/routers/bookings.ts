@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, eq, gte, inArray, lte, lt, gt, ne } from 'drizzle-orm';
-import { bookings, properties, tenants } from '@cm/db';
+import { bookings, channexProperties, properties, tenants } from '@cm/db';
+import { createChannexClient, ChannexError } from '@cm/channex';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
 
 /** YYYY-MM-DD validator. */
@@ -454,6 +455,138 @@ export const bookingsRouter = router({
       }
 
       return row;
+    }),
+
+  /**
+   * Sandbox-only: which of the tenant's connected properties can actually
+   * receive a simulated booking (i.e. have a CRS application connected in
+   * Channex). The UI uses this to only show the "Simulieren" affordance
+   * where POST /bookings won't 403. Returns [] off staging.
+   */
+  crsCapableProperties: tenantProcedure.query(async ({ ctx }) => {
+    if (!ctx.env.CHANNEX_API_URL.includes('staging.channex')) return [];
+
+    const connected = await ctx.db
+      .select({
+        propertyId: properties.id,
+        channexPropertyId: channexProperties.channexPropertyId,
+      })
+      .from(properties)
+      .innerJoin(channexProperties, eq(properties.channexPropertyRef, channexProperties.id))
+      .where(eq(properties.tenantId, ctx.tenantId!));
+
+    if (connected.length === 0) return [];
+
+    const channex = createChannexClient({
+      baseUrl: ctx.env.CHANNEX_API_URL,
+      apiKey: ctx.env.CHANNEX_API_KEY,
+    });
+
+    const checks = await Promise.all(
+      connected.map(async (c) => ({
+        propertyId: c.propertyId,
+        capable: await channex.properties.crsCapable(c.channexPropertyId),
+      })),
+    );
+    return checks.filter((c) => c.capable).map((c) => c.propertyId);
+  }),
+
+  /**
+   * Sandbox-only: mint a synthetic OTA booking via the Channex Booking CRS
+   * API, then kick the ingest function so the row appears in our DB. Used to
+   * exercise the inbound pipeline E2E without real channel accounts.
+   *
+   * Refuses to run against a non-staging Channex base URL.
+   */
+  simulateChannexBooking: editorProcedure
+    .input(
+      z
+        .object({
+          propertyId: z.string().uuid(),
+          arrivalDate: dateStr,
+          departureDate: dateStr,
+          /** Nightly rate as decimal string, e.g. "80.00". Spread across every night. */
+          nightlyRate: z.string().regex(/^\d+(\.\d{1,2})?$/).default('80.00'),
+          otaName: z.enum(['Offline', 'Airbnb', 'BookingCom', 'Expedia']).default('Offline'),
+          guestName: z.string().min(1).default('Sandbox'),
+          guestSurname: z.string().min(1).default('Tester'),
+          adults: z.number().int().min(1).max(20).default(2),
+          children: z.number().int().min(0).max(20).default(0),
+          notes: z.string().max(500).optional(),
+        })
+        .refine((v) => v.arrivalDate < v.departureDate, {
+          message: 'departureDate must be after arrivalDate',
+          path: ['departureDate'],
+        }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.env.CHANNEX_API_URL.includes('staging.channex')) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Simulator is sandbox-only — refusing against a non-staging Channex URL',
+        });
+      }
+
+      // Resolve the Channex IDs for this internal property
+      const mapping = (
+        await ctx.db
+          .select({
+            channexPropertyId: channexProperties.channexPropertyId,
+            channexRoomTypeId: channexProperties.channexRoomTypeId,
+            channexRatePlanId: channexProperties.channexRatePlanId,
+          })
+          .from(properties)
+          .innerJoin(channexProperties, eq(properties.channexPropertyRef, channexProperties.id))
+          .where(
+            and(eq(properties.id, input.propertyId), eq(properties.tenantId, ctx.tenantId!)),
+          )
+          .limit(1)
+      )[0];
+      if (!mapping) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Property is not connected to Channex',
+        });
+      }
+
+      const channex = createChannexClient({
+        baseUrl: ctx.env.CHANNEX_API_URL,
+        apiKey: ctx.env.CHANNEX_API_KEY,
+      });
+
+      let result: { id: string };
+      try {
+        result = await channex.bookings.create({
+          propertyId: mapping.channexPropertyId,
+          roomTypeId: mapping.channexRoomTypeId,
+          ratePlanId: mapping.channexRatePlanId,
+          otaName: input.otaName,
+          arrivalDate: input.arrivalDate,
+          departureDate: input.departureDate,
+          nightlyRate: input.nightlyRate,
+          guest: { name: input.guestName, surname: input.guestSurname },
+          adults: input.adults,
+          children: input.children,
+          notes: input.notes ?? 'Sandbox simulator — safe to delete',
+        });
+      } catch (err) {
+        if (err instanceof ChannexError) {
+          throw new TRPCError({
+            code: 'BAD_GATEWAY',
+            message: `Channex POST /bookings failed (${err.status ?? '?'}): ${err.message}`,
+          });
+        }
+        throw err;
+      }
+
+      // Channex sandbox doesn't deliver webhooks, so trigger the feed
+      // ingestion ourselves. The function is idempotent + account-wide.
+      await ctx.inngest.send({
+        name: 'channex/booking.ingest',
+        data: { reason: 'sandbox.simulator', hintBookingId: result.id },
+      });
+
+      return { channexBookingId: result.id, otaName: input.otaName };
     }),
 
   /**
