@@ -43,6 +43,13 @@
       "when": 1778950547854,
       "tag": "0005_quick_wrecking_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778951138830,
+      "tag": "0006_red_phantom_reporter",
+      "breakpoints": true
     }
   ]
 }

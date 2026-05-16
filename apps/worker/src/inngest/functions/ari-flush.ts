@@ -150,7 +150,7 @@ async function runFlush(runId: string, step: Step): Promise<FlushResult> {
 
   // 3. ONE batched /restrictions (rate + min-stay) across all properties.
   const rateEntries = await step.run('push-rates', async () => {
-    const values = resolveRateValues(rates, mapEntries);
+    const values = await resolveRateValues(db, rates, mapEntries);
     if (values.length === 0) return 0;
     const channex = createChannexClient({
       baseUrl: env.CHANNEX_API_URL,

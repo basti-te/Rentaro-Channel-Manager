@@ -431,6 +431,51 @@ export const ariPending = pgTable(
 
 export type AriPending = typeof ariPending.$inferSelect;
 
+/**
+ * Per-day rate & restriction overrides. One row per (property, date) that
+ * deviates from the property defaults. NULL columns inherit:
+ *   - rate_cents  → properties.default_rate_cents
+ *   - min_stay    → properties.default_min_stay
+ *   - everything else → unset (Channex default)
+ *
+ * This is the PMS-side source of truth the flusher reads to build per-day
+ * /restrictions values. When a tenant later switches rateSource to PriceLabs
+ * (Phase 9c), the rate column is ignored for those properties but the
+ * restriction columns can still be PMS-driven.
+ */
+export const rateOverrides = pgTable(
+  'rate_overrides',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    propertyId: uuid('property_id')
+      .notNull()
+      .references(() => properties.id, { onDelete: 'cascade' }),
+    /** The single calendar day this override applies to. */
+    date: date('date').notNull(),
+    /** Nightly rate incl. VAT, in cents. NULL = inherit property default. */
+    rateCents: bigint('rate_cents', { mode: 'bigint' }),
+    /** Min nights. NULL = inherit property default. */
+    minStay: integer('min_stay'),
+    /** Max nights. NULL = no max. */
+    maxStay: integer('max_stay'),
+    closedToArrival: boolean('closed_to_arrival'),
+    closedToDeparture: boolean('closed_to_departure'),
+    stopSell: boolean('stop_sell'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqDay: uniqueIndex('rate_overrides_property_date_uq').on(t.propertyId, t.date),
+    byTenant: index('rate_overrides_tenant_idx').on(t.tenantId),
+    byPropertyDate: index('rate_overrides_property_date_idx').on(t.propertyId, t.date),
+  }),
+);
+
+export type RateOverride = typeof rateOverrides.$inferSelect;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Messaging
 // ─────────────────────────────────────────────────────────────────────────────

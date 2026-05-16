@@ -11,7 +11,13 @@
  * array entries in a single API call.
  */
 import { and, eq, gte, inArray, lt } from 'drizzle-orm';
-import { bookings, channexProperties, properties, type Database } from '@cm/db';
+import {
+  bookings,
+  channexProperties,
+  properties,
+  rateOverrides,
+  type Database,
+} from '@cm/db';
 import type { AvailabilityUpdate, RestrictionUpdate } from '@cm/channex';
 
 /** A per-(property,kind) merged date window to recompute. dateTo EXCLUSIVE. */
@@ -172,30 +178,118 @@ export async function resolveAvailabilityValues(
   return out;
 }
 
+/** Per-day effective rate/restriction state, before span-compaction. */
+interface DayRate {
+  rate: number | null;
+  minStay: number;
+  maxStay: number | null;
+  closedToArrival: boolean | null;
+  closedToDeparture: boolean | null;
+  stopSell: boolean | null;
+}
+
+/** Stable key for "are these two days identical?" span grouping. */
+function dayRateKey(d: DayRate): string {
+  return [
+    d.rate,
+    d.minStay,
+    d.maxStay,
+    d.closedToArrival,
+    d.closedToDeparture,
+    d.stopSell,
+  ].join('|');
+}
+
 /**
- * Build /restrictions bulk entries (rate + min-stay) for every dirty range
- * whose property has a Channex mapping and a configured default rate.
+ * Build /restrictions bulk entries for every dirty 'rates' range whose
+ * property has a Channex mapping.
  *
- * Phase 9a: property-level default rate + min-stay over the whole range.
- * Phase 9b will layer per-day rate_overrides on top (still compacted).
+ * Per-day resolution: each day's effective value = rate_overrides row for
+ * that day, falling back to the property default. Consecutive identical days
+ * are compacted into one span entry, so a 365-day change is still a small
+ * handful of array entries inside the single batched POST /restrictions.
  */
-export function resolveRateValues(
+export async function resolveRateValues(
+  db: Database,
   ranges: DirtyRange[],
   mappings: Map<string, PropertyMapping>,
-): RestrictionUpdate[] {
+): Promise<RestrictionUpdate[]> {
   const out: RestrictionUpdate[] = [];
+
   for (const r of ranges) {
     const m = mappings.get(r.propertyId);
-    if (!m || m.defaultRateCents == null || !m.channexRatePlanId) continue;
-    out.push({
-      property_id: m.channexPropertyId,
-      rate_plan_id: m.channexRatePlanId,
-      date_from: r.from,
-      date_to: prevDayStr(r.to), // Channex date_to is inclusive
-      rate: m.defaultRateCents,
-      min_stay_arrival: m.defaultMinStay,
-      min_stay_through: m.defaultMinStay,
-    });
+    if (!m || !m.channexRatePlanId) continue;
+
+    // Load only the overrides inside this window, indexed by day.
+    const overrides = await db
+      .select({
+        date: rateOverrides.date,
+        rateCents: rateOverrides.rateCents,
+        minStay: rateOverrides.minStay,
+        maxStay: rateOverrides.maxStay,
+        closedToArrival: rateOverrides.closedToArrival,
+        closedToDeparture: rateOverrides.closedToDeparture,
+        stopSell: rateOverrides.stopSell,
+      })
+      .from(rateOverrides)
+      .where(
+        and(
+          eq(rateOverrides.propertyId, r.propertyId),
+          gte(rateOverrides.date, r.from),
+          lt(rateOverrides.date, r.to),
+        ),
+      );
+    const byDay = new Map(overrides.map((o) => [o.date, o]));
+
+    const effectiveAt = (day: string): DayRate => {
+      const o = byDay.get(day);
+      return {
+        rate:
+          o?.rateCents != null
+            ? Number(o.rateCents)
+            : m.defaultRateCents, // may be null → entry omits `rate`
+        minStay: o?.minStay ?? m.defaultMinStay,
+        maxStay: o?.maxStay ?? null,
+        closedToArrival: o?.closedToArrival ?? null,
+        closedToDeparture: o?.closedToDeparture ?? null,
+        stopSell: o?.stopSell ?? null,
+      };
+    };
+
+    // Walk [from,to), grouping consecutive identical days into spans.
+    let runStart = r.from;
+    let runDay = effectiveAt(r.from);
+    let runKey = dayRateKey(runDay);
+
+    const flush = (start: string, endExclusive: string, d: DayRate) => {
+      const entry: RestrictionUpdate = {
+        property_id: m.channexPropertyId,
+        rate_plan_id: m.channexRatePlanId,
+        date_from: start,
+        date_to: prevDayStr(endExclusive), // Channex date_to is inclusive
+        min_stay_arrival: d.minStay,
+        min_stay_through: d.minStay,
+      };
+      if (d.rate != null) entry.rate = d.rate;
+      if (d.maxStay != null) entry.max_stay = d.maxStay;
+      if (d.closedToArrival != null) entry.closed_to_arrival = d.closedToArrival;
+      if (d.closedToDeparture != null) entry.closed_to_departure = d.closedToDeparture;
+      if (d.stopSell != null) entry.stop_sell = d.stopSell;
+      out.push(entry);
+    };
+
+    for (let cursor = addDayStr(r.from); cursor < r.to; cursor = addDayStr(cursor)) {
+      const day = effectiveAt(cursor);
+      const key = dayRateKey(day);
+      if (key !== runKey) {
+        flush(runStart, cursor, runDay);
+        runStart = cursor;
+        runDay = day;
+        runKey = key;
+      }
+    }
+    flush(runStart, r.to, runDay);
   }
+
   return out;
 }
