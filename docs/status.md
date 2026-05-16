@@ -105,6 +105,11 @@ with Channex/PriceLabs. If the PMS must push rates for certification, we
 keep `rateSource='pms'`; if PriceLabs owns them, certify
 availability+restrictions only. The 9c switch handles either outcome.
 
+**Declared scope (Test 14):** one room type + one rate plan per property
+(vacation-rental model) — multi-room-type / multi-rate-plan is
+deliberately out of scope. Rationale + additive migration path in
+[ADR 0007](adr/0007-single-roomtype-rateplan-per-property.md).
+
 ---
 
 ## What works today (sandbox-verified)
@@ -152,7 +157,7 @@ channel-manager/
     ├── status.md               THIS FILE
     ├── setup.md                first-time setup guide
     ├── channex-webhook-setup.md  registering the global webhook in production
-    └── adr/                    0001–0006 architecture decisions
+    └── adr/                    0001–0007 architecture decisions
 ```
 
 ### Sync data flow (end-to-end, verified against sandbox)
