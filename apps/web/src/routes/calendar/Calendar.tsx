@@ -57,6 +57,13 @@ export interface SelectionResult {
   checkout: string; // YYYY-MM-DD (day after the last selected day)
 }
 
+/** Effective per-day override for a single cell. */
+export interface OverrideCell {
+  rateCents: number | null;
+  minStay: number | null;
+  stopSell: boolean | null;
+}
+
 interface Props {
   start: Date;
   dayCount: number;
@@ -65,6 +72,8 @@ interface Props {
   bookings: Booking[];
   /** Sync status per propertyId. Missing entries render as 'idle'. */
   syncByProperty?: Map<string, PropertySyncInfo>;
+  /** Per-day rate/restriction overrides, keyed propertyId → dayIdx → cell. */
+  overridesByProperty?: Map<string, Map<number, OverrideCell>>;
   onSelectRange?: (result: SelectionResult) => void;
   onBookingClick?: (bookingId: string) => void;
   onSyncProperty?: (propertyId: string) => void;
@@ -87,6 +96,7 @@ export function Calendar({
   properties,
   bookings,
   syncByProperty,
+  overridesByProperty,
   onSelectRange,
   onBookingClick,
   onSyncProperty,
@@ -349,6 +359,7 @@ export function Calendar({
                   todayIdx={todayIdx}
                   bookings={bookingsByProperty.get(p.id) ?? []}
                   occupied={occupiedByProperty.get(p.id) ?? new Set()}
+                  overrides={overridesByProperty?.get(p.id)}
                   start={start}
                   dayCount={dayCount}
                   selectionRange={rowPending}
@@ -455,6 +466,7 @@ function PropertyRow({
   todayIdx,
   bookings,
   occupied,
+  overrides,
   start,
   dayCount,
   selectionRange,
@@ -471,6 +483,7 @@ function PropertyRow({
   todayIdx: number;
   bookings: Booking[];
   occupied: Set<number>;
+  overrides: Map<number, OverrideCell> | undefined;
   start: Date;
   dayCount: number;
   selectionRange: { from: number; to: number } | null;
@@ -481,8 +494,8 @@ function PropertyRow({
   onBookingClick?: (bookingId: string) => void;
   onSyncClick?: () => void;
 }) {
-  const rateLabel = formatRate(property.defaultRateCents, property.currency);
-  const minStay = property.defaultMinStay;
+  const defaultRateLabel = formatRate(property.defaultRateCents, property.currency);
+  const defaultMinStay = property.defaultMinStay;
 
   return (
     <div className="flex relative group/row">
@@ -504,6 +517,15 @@ function PropertyRow({
           const isFree = !occupied.has(i);
           const inRange =
             selectionRange != null && i >= selectionRange.from && i <= selectionRange.to;
+
+          // Effective per-day values: override wins over property default.
+          const ov = overrides?.get(i);
+          const hasRateOverride = ov?.rateCents != null;
+          const rateLabel = hasRateOverride
+            ? formatRate(ov!.rateCents, property.currency)
+            : defaultRateLabel;
+          const cellMinStay = ov?.minStay ?? defaultMinStay;
+          const stopSell = ov?.stopSell === true;
           return (
             <div
               key={i}
@@ -522,27 +544,42 @@ function PropertyRow({
                 isToday && 'bg-brand-soft/40',
                 isFree && 'cursor-pointer hover:bg-brand-soft/40 transition-colors',
                 inRange && 'bg-brand-soft/80 hover:bg-brand-soft/80',
+                stopSell && !inRange && 'bg-negative-soft/50',
               )}
               style={{ width: DAY_W, height: ROW_H, touchAction: 'pan-y' }}
             >
+              {isFree && stopSell && !inRange && (
+                <span className="text-[8.5px] uppercase tracking-[0.06em] leading-none text-negative font-semibold">
+                  Stop
+                </span>
+              )}
               {isFree && rateLabel && !inRange && (
                 <span
                   className={cn(
                     'num text-[10.5px] leading-none',
-                    isToday ? 'text-brand/70' : 'text-whisper',
+                    stopSell && 'mt-1',
+                    hasRateOverride
+                      ? 'text-ink-soft font-medium'
+                      : isToday
+                        ? 'text-brand/70'
+                        : 'text-whisper',
                   )}
                 >
                   {rateLabel}
                 </span>
               )}
-              {isFree && minStay > 1 && !inRange && (
+              {isFree && cellMinStay > 1 && !inRange && (
                 <span
                   className={cn(
                     'text-[9px] leading-none mt-1 tracking-[0.04em]',
-                    isToday ? 'text-brand/60' : 'text-whisper/70',
+                    ov?.minStay != null
+                      ? 'text-ink-soft/80'
+                      : isToday
+                        ? 'text-brand/60'
+                        : 'text-whisper/70',
                   )}
                 >
-                  <span className="num">{minStay}</span> D
+                  <span className="num">{cellMinStay}</span> D
                 </span>
               )}
             </div>

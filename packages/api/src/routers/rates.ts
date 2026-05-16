@@ -48,8 +48,7 @@ async function assertPropertyInTenant(
 
 export const ratesRouter = router({
   /**
-   * Per-day overrides overlapping [from, to). Powers the calendar so each
-   * cell can show its effective rate / restriction state.
+   * Per-day overrides overlapping [from, to) for one property.
    */
   listByRange: tenantProcedure
     .input(z.object({ propertyId: z.string().uuid(), from: dateStr, to: dateStr }))
@@ -61,6 +60,35 @@ export const ratesRouter = router({
           and(
             eq(rateOverrides.tenantId, ctx.tenantId!),
             eq(rateOverrides.propertyId, input.propertyId),
+            gte(rateOverrides.date, input.from),
+            lt(rateOverrides.date, input.to),
+          ),
+        );
+    }),
+
+  /**
+   * Tenant-wide per-day overrides in [from, to). One query powers the whole
+   * calendar grid (every property) so each free cell can show its effective
+   * rate / restriction state.
+   */
+  listByRangeAll: tenantProcedure
+    .input(z.object({ from: dateStr, to: dateStr }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db
+        .select({
+          propertyId: rateOverrides.propertyId,
+          date: rateOverrides.date,
+          rateCents: rateOverrides.rateCents,
+          minStay: rateOverrides.minStay,
+          maxStay: rateOverrides.maxStay,
+          closedToArrival: rateOverrides.closedToArrival,
+          closedToDeparture: rateOverrides.closedToDeparture,
+          stopSell: rateOverrides.stopSell,
+        })
+        .from(rateOverrides)
+        .where(
+          and(
+            eq(rateOverrides.tenantId, ctx.tenantId!),
             gte(rateOverrides.date, input.from),
             lt(rateOverrides.date, input.to),
           ),

@@ -1,23 +1,35 @@
 import { useMemo, useState } from 'react';
-import { addDays, formatDistanceToNow, startOfDay, format, subDays } from 'date-fns';
+import {
+  addDays,
+  differenceInCalendarDays,
+  formatDistanceToNow,
+  startOfDay,
+  format,
+  subDays,
+} from 'date-fns';
 import { de } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { PageHeader } from './_dashboard';
 import { Button } from '../components/ui/Button';
 import { Skeleton } from '../components/ui/Skeleton';
+import { cn } from '@cm/ui';
 import {
   Calendar,
   formatISODate,
+  type OverrideCell,
   type PropertySyncInfo,
   type SelectionResult,
 } from './calendar/Calendar';
 import type { SyncState } from './calendar/PropertyRail';
 import { NewBookingDialog, type EditingBooking } from './calendar/NewBookingDialog';
+import { RateEditorDialog, type RateSelection } from './calendar/RateEditorDialog';
 import { BookingDetailSheet } from './calendar/BookingDetailSheet';
 import { trpc } from '../lib/trpc';
 import { useSyncJobsRealtime } from '../lib/realtime';
+
+type CalendarMode = 'bookings' | 'rates';
 
 const VIEWPORT_DAYS = 60;
 
@@ -26,7 +38,9 @@ export function CalendarPage() {
   const start = useMemo(() => subDays(anchor, 7), [anchor]);
   const end = useMemo(() => addDays(start, VIEWPORT_DAYS), [start]);
 
+  const [mode, setMode] = useState<CalendarMode>('bookings');
   const [newBooking, setNewBooking] = useState<SelectionResult | null>(null);
+  const [rateSelection, setRateSelection] = useState<RateSelection | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingBooking | null>(null);
 
@@ -39,6 +53,10 @@ export function CalendarPage() {
     to: formatISODate(end),
   });
   const syncStatusQ = trpc.sync.statusByProperty.useQuery();
+  const overridesQ = trpc.rates.listByRangeAll.useQuery({
+    from: formatISODate(start),
+    to: formatISODate(end),
+  });
 
   const tenant = meQ.data?.memberships[0];
 
@@ -82,6 +100,26 @@ export function CalendarPage() {
     }
     return map;
   }, [syncStatusQ.data]);
+
+  // propertyId → dayIdx → effective override cell, for the grid.
+  const overridesByProperty = useMemo(() => {
+    const map = new Map<string, Map<number, OverrideCell>>();
+    for (const o of overridesQ.data ?? []) {
+      const idx = differenceInCalendarDays(new Date(`${o.date}T00:00:00`), start);
+      if (idx < 0 || idx >= VIEWPORT_DAYS) continue;
+      let inner = map.get(o.propertyId);
+      if (!inner) {
+        inner = new Map();
+        map.set(o.propertyId, inner);
+      }
+      inner.set(idx, {
+        rateCents: o.rateCents != null ? Number(o.rateCents) : null,
+        minStay: o.minStay,
+        stopSell: o.stopSell,
+      });
+    }
+    return map;
+  }, [overridesQ.data, start]);
 
   const isLoading = groupsQ.isLoading || propsQ.isLoading || bookingsQ.isLoading;
 
@@ -146,7 +184,38 @@ export function CalendarPage() {
         title="Calendar"
         subtitle={`${format(start, 'd. MMMM', { locale: de })} – ${format(end, 'd. MMMM yyyy', { locale: de })}`}
         action={
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="inline-flex rounded-lg border border-line bg-surface p-0.5"
+              role="tablist"
+              aria-label="Calendar mode"
+            >
+              {(
+                [
+                  { id: 'bookings' as const, label: 'Buchungen', icon: CalendarDays },
+                  { id: 'rates' as const, label: 'Preise', icon: Tag },
+                ]
+              ).map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === id}
+                  onClick={() => setMode(id)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[7px]',
+                    'text-[13px] font-medium transition-colors',
+                    mode === id
+                      ? 'bg-brand text-white shadow-sm'
+                      : 'text-muted hover:text-ink hover:bg-sunken',
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" strokeWidth={2} />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="h-5 w-px bg-line" aria-hidden />
             <Button
               variant="secondary"
               size="sm"
@@ -191,8 +260,17 @@ export function CalendarPage() {
           properties={properties}
           bookings={bookings}
           syncByProperty={syncByProperty}
+          overridesByProperty={overridesByProperty}
           pendingSyncProperties={pendingSyncProps}
-          onSelectRange={(r) => setNewBooking(r)}
+          onSelectRange={(r) =>
+            mode === 'rates'
+              ? setRateSelection({
+                  propertyId: r.propertyId,
+                  from: r.checkin,
+                  to: r.checkout,
+                })
+              : setNewBooking(r)
+          }
           onBookingClick={(id) => setDetailId(id)}
           onSyncProperty={(propertyId) => triggerSync.mutate({ propertyId })}
         />
@@ -217,6 +295,21 @@ export function CalendarPage() {
         onUpdated={() => {
           utils.bookings.listByRange.invalidate();
           setEditing(null);
+        }}
+      />
+
+      <RateEditorDialog
+        open={!!rateSelection}
+        selection={rateSelection}
+        propertyName={
+          rateSelection
+            ? properties.find((p) => p.id === rateSelection.propertyId)?.name ?? null
+            : null
+        }
+        onClose={() => setRateSelection(null)}
+        onSaved={() => {
+          utils.rates.listByRangeAll.invalidate();
+          setRateSelection(null);
         }}
       />
 
