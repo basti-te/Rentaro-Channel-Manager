@@ -29,6 +29,20 @@
       "when": 1778770980875,
       "tag": "0003_aspiring_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778949796651,
+      "tag": "0004_amazing_machine_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778950547854,
+      "tag": "0005_quick_wrecking_crew",
+      "breakpoints": true
     }
   ]
 }

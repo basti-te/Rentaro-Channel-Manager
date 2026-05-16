@@ -25,21 +25,14 @@ export interface AppContextEnv {
  * `Record<string, EventPayload>` constraint.
  */
 export type AppEvents = {
-  'apartment/availability.sync': {
+  /**
+   * Triggers the global ARI flusher. Carries no data — the dirty-range rows
+   * were already written to `ari_pending`; the flusher reads the outbox.
+   * Debounced + throttled worker-side so bursts collapse into ~2 Channex
+   * calls regardless of property count.
+   */
+  'ari/changed': {
     data: {
-      tenantId: string;
-      propertyId: string;
-      from: string;
-      to: string;
-      reason?: string;
-    };
-  };
-  'apartment/rates.sync': {
-    data: {
-      tenantId: string;
-      propertyId: string;
-      from: string;
-      to: string;
       reason?: string;
     };
   };

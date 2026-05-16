@@ -1,0 +1,1 @@
+ALTER TABLE "ari_pending" ALTER COLUMN "batch_id" SET DATA TYPE text;

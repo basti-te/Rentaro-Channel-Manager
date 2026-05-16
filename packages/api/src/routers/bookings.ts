@@ -4,6 +4,7 @@ import { and, eq, gte, inArray, lte, lt, gt, ne } from 'drizzle-orm';
 import { bookings, channexProperties, properties, tenants } from '@cm/db';
 import { createChannexClient, ChannexError } from '@cm/channex';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
+import { enqueueAri } from '../services/ari';
 
 /** YYYY-MM-DD validator. */
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
@@ -255,15 +256,13 @@ export const bookingsRouter = router({
         })
         .returning();
 
-      // Fire-and-forget Channex sync. Worker picks it up via Inngest.
-      await ctx.inngest.send({
-        name: 'apartment/availability.sync',
-        data: {
-          tenantId: ctx.tenantId!,
-          propertyId: input.propertyId,
-          ...unionRange({ checkin: input.checkin, checkout: input.checkout }),
-          reason: input.isBlock ? 'block.created' : 'booking.created',
-        },
+      // Enqueue into the ARI outbox; the global flusher batches the push.
+      await enqueueAri(ctx, {
+        tenantId: ctx.tenantId!,
+        propertyId: input.propertyId,
+        kinds: ['availability'],
+        ...unionRange({ checkin: input.checkin, checkout: input.checkout }),
+        reason: input.isBlock ? 'block.created' : 'booking.created',
       });
 
       return row;
@@ -420,37 +419,31 @@ export const bookingsRouter = router({
       const oldRange = { checkin: current.checkin, checkout: current.checkout };
       const newRange = { checkin: next.checkin, checkout: next.checkout };
 
-      // If the property changed too, sync both properties.
+      // If the property changed too, recompute availability for both.
       if (next.propertyId !== current.propertyId) {
-        await ctx.inngest.send([
+        await enqueueAri(ctx, [
           {
-            name: 'apartment/availability.sync',
-            data: {
-              tenantId: ctx.tenantId!,
-              propertyId: current.propertyId,
-              ...unionRange(oldRange),
-              reason: 'booking.moved.from',
-            },
+            tenantId: ctx.tenantId!,
+            propertyId: current.propertyId,
+            kinds: ['availability'],
+            ...unionRange(oldRange),
+            reason: 'booking.moved.from',
           },
           {
-            name: 'apartment/availability.sync',
-            data: {
-              tenantId: ctx.tenantId!,
-              propertyId: next.propertyId,
-              ...unionRange(newRange),
-              reason: 'booking.moved.to',
-            },
+            tenantId: ctx.tenantId!,
+            propertyId: next.propertyId,
+            kinds: ['availability'],
+            ...unionRange(newRange),
+            reason: 'booking.moved.to',
           },
         ]);
       } else {
-        await ctx.inngest.send({
-          name: 'apartment/availability.sync',
-          data: {
-            tenantId: ctx.tenantId!,
-            propertyId: next.propertyId,
-            ...unionRange(oldRange, newRange),
-            reason: 'booking.updated',
-          },
+        await enqueueAri(ctx, {
+          tenantId: ctx.tenantId!,
+          propertyId: next.propertyId,
+          kinds: ['availability'],
+          ...unionRange(oldRange, newRange),
+          reason: 'booking.updated',
         });
       }
 
@@ -629,19 +622,16 @@ export const bookingsRouter = router({
           .where(and(eq(bookings.id, input.id), eq(bookings.tenantId, ctx.tenantId!)));
       }
 
-      // Push availability for the released range. The Inngest worker reads
-      // active bookings overlapping the range and computes the new state, so
-      // releasing one booking that overlaps others still leaves the
-      // overlapping nights at availability=0.
-      await ctx.inngest.send({
-        name: 'apartment/availability.sync',
-        data: {
-          tenantId: ctx.tenantId!,
-          propertyId: releaseDates.propertyId,
-          from: releaseDates.from,
-          to: releaseDates.to,
-          reason: wasExternal ? 'external.cancelled' : 'booking.deleted',
-        },
+      // Enqueue the released range. The flusher recomputes from remaining
+      // active bookings, so releasing one booking that overlaps others still
+      // leaves the overlapping nights at availability=0.
+      await enqueueAri(ctx, {
+        tenantId: ctx.tenantId!,
+        propertyId: releaseDates.propertyId,
+        kinds: ['availability'],
+        from: releaseDates.from,
+        to: releaseDates.to,
+        reason: wasExternal ? 'external.cancelled' : 'booking.deleted',
       });
 
       return { id: input.id, cancelled: wasExternal };

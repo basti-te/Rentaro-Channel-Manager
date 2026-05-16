@@ -11,43 +11,19 @@
  */
 export type Events = {
   /**
-   * Push availability for one apartment over a date range to Channex.
-   * Fired after a booking is created, edited, or cancelled.
+   * An ARI-relevant change happened (booking/block/rate/min-stay) and a
+   * dirty-range row was written to `ari_pending`. This event only *triggers*
+   * the global flusher — it carries no authoritative data; the flusher reads
+   * the outbox table for the full picture.
    *
-   * Worker:
-   *   - reads bookings overlapping [from, to] for the property
-   *   - computes which nights are occupied
-   *   - bulk-pushes availability (0 or 1) per night via channex.availability.push()
-   *   - writes the outcome to sync_jobs
+   * The flusher (functions/ari-flush.ts) is debounced (collapse bursts) and
+   * throttled (hard cap on calls/min) so that 1 or 1000 properties changing
+   * at once still results in ONE batched /availability + ONE /restrictions
+   * call, respecting Channex's 20 ARI/min limit.
    */
-  'apartment/availability.sync': {
+  'ari/changed': {
     data: {
-      tenantId: string;
-      /** Internal properties.id (NOT the Channex property uuid). */
-      propertyId: string;
-      /** Inclusive YYYY-MM-DD start of the range to recompute. */
-      from: string;
-      /** EXCLUSIVE YYYY-MM-DD end of the range. */
-      to: string;
-      /** Free-form reason for telemetry (e.g. "booking.created"). */
-      reason?: string;
-    };
-  };
-
-  /**
-   * Push the apartment's nightly rate + min-stay to Channex over a date
-   * range. Fired when properties.defaultRateCents or defaultMinStay changes,
-   * and on manual sync.
-   *
-   * Per-day rate overrides (weekends, holidays) come in a future phase via a
-   * dedicated `rate_overrides` table.
-   */
-  'apartment/rates.sync': {
-    data: {
-      tenantId: string;
-      propertyId: string;
-      from: string;
-      to: string;
+      /** Telemetry only — e.g. "booking.created", "rate.updated". */
       reason?: string;
     };
   };

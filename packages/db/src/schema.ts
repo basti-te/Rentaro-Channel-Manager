@@ -86,6 +86,15 @@ export const syncJobStatusEnum = pgEnum('sync_job_status', [
   'cancelled',
 ]);
 
+/**
+ * ARI outbox change kinds.
+ *   - 'availability' → recompute occupied days from bookings, push /availability
+ *   - 'rates'        → resolve effective rate + restrictions, push /restrictions
+ * Rates and restrictions travel together on Channex's /restrictions endpoint,
+ * so a single 'rates' kind covers both.
+ */
+export const ariKindEnum = pgEnum('ari_kind', ['availability', 'rates']);
+
 export const messageChannelEnum = pgEnum('message_channel', [
   'sms',
   'airbnb',
@@ -377,6 +386,50 @@ export const syncJobs = pgTable(
     byStatus: index('sync_jobs_status_scheduled_idx').on(t.status, t.scheduledAt),
   }),
 );
+
+/**
+ * ARI outbox (dirty-range). Every booking/block/rate change writes a row here
+ * instead of pushing to Channex directly. A single global, debounced +
+ * throttled flusher claims all unflushed rows across ALL tenants/properties,
+ * resolves the current desired state, and emits ONE batched /availability and
+ * ONE /restrictions call — respecting the 20 ARI/min limit regardless of how
+ * many properties exist now or later.
+ *
+ * "Dirty-range" (not concrete values) means repeated edits to the same
+ * property/range coalesce, the flush is idempotent, and freshly-onboarded
+ * properties are picked up automatically.
+ */
+export const ariPending = pgTable(
+  'ari_pending',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    propertyId: uuid('property_id')
+      .notNull()
+      .references(() => properties.id, { onDelete: 'cascade' }),
+    kind: ariKindEnum('kind').notNull(),
+    /** Inclusive YYYY-MM-DD. */
+    dateFrom: date('date_from').notNull(),
+    /** EXCLUSIVE YYYY-MM-DD (matches the Inngest event range contract). */
+    dateTo: date('date_to').notNull(),
+    reason: text('reason'),
+    /** Inngest runId of the flush that claimed this row (ULID, not a UUID) — for tracing. */
+    batchId: text('batch_id'),
+    /** Set when the claiming flush successfully pushed to Channex. */
+    flushedAt: timestamp('flushed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // Hot path: "give me everything not yet flushed".
+    unflushed: index('ari_pending_unflushed_idx').on(t.flushedAt, t.kind),
+    byBatch: index('ari_pending_batch_idx').on(t.batchId),
+    byProperty: index('ari_pending_property_idx').on(t.propertyId),
+  }),
+);
+
+export type AriPending = typeof ariPending.$inferSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Messaging

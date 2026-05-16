@@ -4,6 +4,7 @@ import { and, asc, eq, max } from 'drizzle-orm';
 import { properties, propertyGroups, channexProperties, tenants } from '@cm/db';
 import { createChannexClient, ChannexError } from '@cm/channex';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
+import { enqueueAri } from '../services/ari';
 
 export const propertiesRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {
@@ -96,21 +97,20 @@ export const propertiesRouter = router({
         .returning();
       if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
 
-      // Rate or min-stay touched? Push to Channex over the next ~6 months.
+      // Rate or min-stay touched? Enqueue a rates change over the next ~6
+      // months; the global flusher batches it with everything else.
       if (input.defaultRateCents !== undefined || input.defaultMinStay !== undefined) {
         const today = new Date();
         const from = today.toISOString().slice(0, 10);
         const toDate = new Date(today);
         toDate.setUTCDate(toDate.getUTCDate() + 180);
-        await ctx.inngest.send({
-          name: 'apartment/rates.sync',
-          data: {
-            tenantId: ctx.tenantId!,
-            propertyId: id,
-            from,
-            to: toDate.toISOString().slice(0, 10),
-            reason: 'property.updated',
-          },
+        await enqueueAri(ctx, {
+          tenantId: ctx.tenantId!,
+          propertyId: id,
+          kinds: ['rates'],
+          from,
+          to: toDate.toISOString().slice(0, 10),
+          reason: 'property.updated',
         });
       }
 
@@ -272,22 +272,19 @@ export const propertiesRouter = router({
         return cp.id;
       });
 
-      // 4. Queue initial sync over the next 180 days
+      // 4. Queue initial availability + rates sync over the next 180 days
       const today = new Date();
       const from = today.toISOString().slice(0, 10);
       const toDate = new Date(today);
       toDate.setUTCDate(toDate.getUTCDate() + 180);
-      const eventData = {
+      await enqueueAri(ctx, {
         tenantId: ctx.tenantId!,
         propertyId: input.propertyId,
+        kinds: ['availability', 'rates'],
         from,
         to: toDate.toISOString().slice(0, 10),
         reason: 'onboarding.initial',
-      };
-      await ctx.inngest.send([
-        { name: 'apartment/availability.sync', data: eventData },
-        { name: 'apartment/rates.sync', data: eventData },
-      ]);
+      });
 
       return {
         channexPropertyRef: channexRowId,

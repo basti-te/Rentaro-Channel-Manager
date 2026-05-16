@@ -3,6 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { and, desc, eq, isNotNull } from 'drizzle-orm';
 import { properties, syncJobs } from '@cm/db';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
+import { enqueueAri } from '../services/ari';
 
 /**
  * Window — manual triggers sync this many days forward from today.
@@ -67,17 +68,14 @@ export const syncRouter = router({
       toDate.setUTCDate(toDate.getUTCDate() + TRIGGER_FORWARD_DAYS);
       const to = toDate.toISOString().slice(0, 10);
 
-      const data = {
+      await enqueueAri(ctx, {
         tenantId: ctx.tenantId!,
         propertyId: input.propertyId,
+        kinds: ['availability', 'rates'],
         from,
         to,
         reason: 'user.manual',
-      };
-      await ctx.inngest.send([
-        { name: 'apartment/availability.sync', data },
-        { name: 'apartment/rates.sync', data },
-      ]);
+      });
 
       return { ok: true, from, to };
     }),
