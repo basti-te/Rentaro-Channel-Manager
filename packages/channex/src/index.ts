@@ -21,6 +21,7 @@ import { AvailabilityAPI } from './resources/availability';
 import { RestrictionsAPI } from './resources/restrictions';
 import { BookingsAPI } from './resources/bookings';
 import { WebhooksAPI } from './resources/webhooks';
+import { AuthAPI } from './resources/auth';
 
 export interface ChannexClient {
   http: ChannexHttpClient;
@@ -31,6 +32,7 @@ export interface ChannexClient {
   restrictions: RestrictionsAPI;
   bookings: BookingsAPI;
   webhooks: WebhooksAPI;
+  auth: AuthAPI;
   /** Quick reachability check — calls GET /properties with limit=1. */
   ping(): Promise<{ ok: true; count: number }>;
 }
@@ -47,6 +49,7 @@ export function createChannexClient(config: ChannexConfig): ChannexClient {
     restrictions: new RestrictionsAPI(http),
     bookings: new BookingsAPI(http),
     webhooks: new WebhooksAPI(http),
+    auth: new AuthAPI(http),
     async ping() {
       const r = await properties.list({ limit: 1 });
       return { ok: true as const, count: r.meta?.total ?? r.data.length };
@@ -68,6 +71,7 @@ export type { RestrictionUpdate } from './schemas/restriction';
 export type { Booking, BookingRevision, BookingCreate } from './schemas/booking';
 export type { Webhook, WebhookCreate, WebhookDelivery, WebhookEvent } from './schemas/webhook';
 export { BOOKING_EVENTS } from './schemas/webhook';
+export type { OneTimeTokenInput } from './resources/auth';
 export type { Property, PropertyCreate } from './schemas/property';
 export type { RoomType, RoomTypeCreate } from './schemas/room-type';
 export type { RatePlan, RatePlanCreate } from './schemas/rate-plan';
