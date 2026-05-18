@@ -7,6 +7,7 @@ import { syncRouter } from './routers/sync';
 import { ratesRouter } from './routers/rates';
 import { settingsRouter } from './routers/settings';
 import { messagesRouter } from './routers/messages';
+import { messageTemplatesRouter } from './routers/message-templates';
 
 export const appRouter = router({
   me: meRouter,
@@ -17,6 +18,7 @@ export const appRouter = router({
   rates: ratesRouter,
   settings: settingsRouter,
   messages: messagesRouter,
+  messageTemplates: messageTemplatesRouter,
 });
 
 export type AppRouter = typeof appRouter;

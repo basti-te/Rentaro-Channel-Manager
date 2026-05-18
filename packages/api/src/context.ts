@@ -11,6 +11,11 @@ export interface AppContextEnv {
   CHANNEX_API_URL: string;
   CHANNEX_API_KEY: string;
   CHANNEX_WEBHOOK_SECRET: string;
+  /** Twilio SMS — optional; messaging test-send / automation degrade gracefully if unset. */
+  TWILIO_ACCOUNT_SID?: string;
+  TWILIO_AUTH_TOKEN?: string;
+  /** Sender: an E.164 number or an approved alphanumeric sender id. */
+  TWILIO_FROM?: string;
   INNGEST_EVENT_KEY?: string;
   INNGEST_BASE_URL?: string;
   INNGEST_APP_ID?: string;

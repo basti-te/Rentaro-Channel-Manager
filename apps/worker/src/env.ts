@@ -16,6 +16,11 @@ const Env = z.object({
   CHANNEX_WEBHOOK_SECRET: z.string().min(1),
   APP_URL: z.string().url().default('http://localhost:5173'),
 
+  // Twilio SMS — optional; test-send / automation degrade gracefully if unset.
+  TWILIO_ACCOUNT_SID: z.string().optional().transform((v) => v || undefined),
+  TWILIO_AUTH_TOKEN: z.string().optional().transform((v) => v || undefined),
+  TWILIO_FROM: z.string().optional().transform((v) => v || undefined),
+
   // Inngest — all optional in dev (cli auto-detects local mode).
   // Coerce empty strings to undefined so a placeholder `KEY=` line in
   // .env.local doesn't trip the url() validator.
