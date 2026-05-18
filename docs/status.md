@@ -32,16 +32,16 @@ If install hangs, pause iCloud or move the repo to a non-iCloud path.
 **Recent commits (`git log --oneline -12`):**
 
 ```
+22ef628 messages: embed Channex guest inbox via one-time-token iframe
+bd5fa89 docs: ADR 0007 — one room type + one rate plan per property
+18e6f21 docs: status.md handoff updated to Phase 8-9 (cert-ready)
 6017898 Phase 9d: calendar rate/restriction editor (live-review ready)
 92473d4 Phase 9c: per-tenant rateSource (pms | pricelabs)
 0e56c89 Phase 9b: per-day rate & restriction overrides
 eec8ab1 Phase 9a: global ARI outbox + debounced/throttled flusher
 51628f6 Phase 8: sandbox booking simulator + inbound pipeline fix
 bdd3adf status: all 16 apartments connected; remove obsolete setup script
-f7c2bfd docs: add status.md handoff covering Phase 0-7 state
 7236433 Phase 7: one-click property onboarding to Channex
-c5027ea booking: min-stay is a soft suggestion, not a hard auto-bump
-fd41693 calendar: drag-select uses last cell as checkout, not last night
 e0331cb Phase 6: inbound Channex webhook + booking-feed ingest
 6286fb8 Phase 5b.1: rate + min-stay sync to Channex
 ```
@@ -64,8 +64,9 @@ e0331cb Phase 6: inbound Channex webhook + booking-feed ingest
 | 9b | Per-day rate & restriction overrides | ✅ |
 | 9c | Per-tenant rateSource switch (pms \| pricelabs) | ✅ |
 | 9d | Calendar rate/restriction editor (live-review ready) | ✅ |
+| M1 | Channex guest-inbox iframe (OTT-embedded) | ✅ |
 | — | Reinigung (cleaning module) | ⬜ planned |
-| — | Messaging (SMS + Channex inbox) | ⬜ planned |
+| — | Messaging Option B (own inbox + SMS + AI/KB) | ⬜ planned (decided against for now — Option A iframe shipped) |
 | — | Settings page (tenant + property defaults editor) | ⬜ planned |
 | — | Stripe billing | ⬜ deferred to SaaS launch |
 | — | Self-service onboarding | ⬜ deferred |
@@ -132,6 +133,7 @@ deliberately out of scope. Rationale + additive migration path in
 | Inbound webhook | `/api/webhooks/channex/<secret>` validated, persisted in `webhook_deliveries`, emits `channex/booking.ingest`. Worker pulls the booking-revisions feed, reads `attributes.booking_id` inline (no re-fetch), upserts bookings, acks |
 | Sandbox booking simulator | Apartments page (dev-only, CRS-capable properties): `bookings.simulateChannexBooking` mints an OTA booking via Channex CRS API then triggers ingest. Only shown where Channex has a CRS app connected (`bookings.crsCapableProperties`) |
 | Calendar rate editor | "Buchungen \| Preise" mode toggle. In Preise mode a drag/click range opens `RateEditorDialog` (price, min-stay, stop-sell, clear). Free cells show effective per-day rate (override-aware, stop-sell flagged) |
+| Guest inbox (Messages) | `/messages`: per-apartment selector + embedded Channex chat. `messages.iframeSession` mints a Channex one-time token server-side (API key never in browser) and returns the `/auth/exchange?...&redirect_to=/messages` URL; rendered in a sandboxed iframe. Needs the Channex **Messages app** installed on the property; threads only appear with a real messaging-capable OTA channel |
 | Property onboarding | Click "Verbinden" → creates Channex Property + Room Type + Rate Plan + DB mapping + initial ARI enqueue |
 | Mobile nav | Bottom tab bar Kalender / Nachrichten / Reinigung / Menü (last three are placeholders) |
 
@@ -148,8 +150,8 @@ channel-manager/
 │       └── src/inngest/        client, events.ts, functions/ (ari-flush, ari-resolve, ingest-bookings, channex-booking-mapper)
 ├── packages/
 │   ├── db/                     Drizzle schema (incl. ari_pending, rate_overrides, tenants.rate_source), migrations 0001–0007, post-migrate SQL (RLS + realtime), scripts/
-│   ├── api/                    tRPC routers: me, propertyGroups, properties, bookings, sync, rates, settings; services/ari.ts (enqueueAri); AppContext + AppEvents
-│   ├── channex/                Typed REST client (properties incl. crsCapable, room_types, rate_plans, availability, restrictions, bookings incl. create + feed, webhooks)
+│   ├── api/                    tRPC routers: me, propertyGroups, properties, bookings, sync, rates, settings, messages; services/ari.ts (enqueueAri); AppContext + AppEvents
+│   ├── channex/                Typed REST client (auth/one_time_token, properties incl. crsCapable, room_types, rate_plans, availability, restrictions, bookings incl. create + feed, webhooks)
 │   ├── shared/                 Zod schemas, branded types, constants (Plan limits, OTA name mappings)
 │   └── ui/                     cn() helper; expand when sharing components between apps
 └── docs/
@@ -249,6 +251,18 @@ Booking in Airbnb (or any connected OTA) — sandbox: simulator mints it
     `code_verifier` lives there). A headless/preview browser will bounce to
     `/login` even with a valid token. For authed UI checks, use the
     Claude-in-Chrome extension on the user's already-logged-in browser.
+15. **Channex Messages needs the "Messages app" + a messaging OTA channel**
+    — `/auth/one_time_token` and the chat iframe require the Messages app
+    installed per property (`app.channex.io/applications`, paid). Even with
+    it installed, the iframe shows *"Property not have any active channel
+    with message support"* until a real Airbnb/Booking.com channel is
+    connected (production). Same channel-less sandbox limit as bookings/ARI;
+    not a code defect. Installed on **Whg 0** in our sandbox.
+16. **Channex iframe auth = one-time token (OTT)** — never put the API key
+    in an iframe URL. `POST /auth/one_time_token` server-side → 15-min
+    single-use token → `/auth/exchange?oauth_session_key=…&app_mode=headless
+    &redirect_to=/messages&property_id=…`. `redirect_to=/messages` is
+    verified correct for the chat screen.
 
 ---
 
@@ -314,6 +328,8 @@ Booking in Airbnb (or any connected OTA) — sandbox: simulator mints it
 - **CRS booking** works only on **Whg 0** (has the Apaleo CRS app from
   the seed). The sandbox booking simulator is therefore limited to Whg 0;
   it's enough to exercise the full inbound pipeline E2E.
+- **Messages app** installed on **Whg 0**. OTT + chat iframe verified
+  working; threads stay empty until a real messaging OTA channel exists.
 
 Run `pnpm --filter @cm/db check-onboarding` for the live mapping.
 
