@@ -32,6 +32,8 @@ If install hangs, pause iCloud or move the repo to a non-iCloud path.
 **Recent commits (`git log --oneline -12`):**
 
 ```
+5a84aee messages: template CRUD + SMS test-send (M2)
+7ea50b4 docs: status.md — Channex guest-inbox iframe (M1)
 22ef628 messages: embed Channex guest inbox via one-time-token iframe
 bd5fa89 docs: ADR 0007 — one room type + one rate plan per property
 18e6f21 docs: status.md handoff updated to Phase 8-9 (cert-ready)
@@ -40,10 +42,8 @@ bd5fa89 docs: ADR 0007 — one room type + one rate plan per property
 0e56c89 Phase 9b: per-day rate & restriction overrides
 eec8ab1 Phase 9a: global ARI outbox + debounced/throttled flusher
 51628f6 Phase 8: sandbox booking simulator + inbound pipeline fix
-bdd3adf status: all 16 apartments connected; remove obsolete setup script
 7236433 Phase 7: one-click property onboarding to Channex
 e0331cb Phase 6: inbound Channex webhook + booking-feed ingest
-6286fb8 Phase 5b.1: rate + min-stay sync to Channex
 ```
 
 ## Phase status
@@ -65,8 +65,10 @@ e0331cb Phase 6: inbound Channex webhook + booking-feed ingest
 | 9c | Per-tenant rateSource switch (pms \| pricelabs) | ✅ |
 | 9d | Calendar rate/restriction editor (live-review ready) | ✅ |
 | M1 | Channex guest-inbox iframe (OTT-embedded) | ✅ |
+| M2 | Message templates CRUD + SMS test-send (Twilio) | ✅ |
+| M3 | Trigger scheduler + automated send (outbox + status) | ⬜ next |
 | — | Reinigung (cleaning module) | ⬜ planned |
-| — | Messaging Option B (own inbox + SMS + AI/KB) | ⬜ planned (decided against for now — Option A iframe shipped) |
+| — | Messaging Option B (own inbox + AI/KB auto-reply) | ⬜ planned (decided against for now — Option A iframe shipped) |
 | — | Settings page (tenant + property defaults editor) | ⬜ planned |
 | — | Stripe billing | ⬜ deferred to SaaS launch |
 | — | Self-service onboarding | ⬜ deferred |
@@ -133,7 +135,8 @@ deliberately out of scope. Rationale + additive migration path in
 | Inbound webhook | `/api/webhooks/channex/<secret>` validated, persisted in `webhook_deliveries`, emits `channex/booking.ingest`. Worker pulls the booking-revisions feed, reads `attributes.booking_id` inline (no re-fetch), upserts bookings, acks |
 | Sandbox booking simulator | Apartments page (dev-only, CRS-capable properties): `bookings.simulateChannexBooking` mints an OTA booking via Channex CRS API then triggers ingest. Only shown where Channex has a CRS app connected (`bookings.crsCapableProperties`) |
 | Calendar rate editor | "Buchungen \| Preise" mode toggle. In Preise mode a drag/click range opens `RateEditorDialog` (price, min-stay, stop-sell, clear). Free cells show effective per-day rate (override-aware, stop-sell flagged) |
-| Guest inbox (Messages) | `/messages`: per-apartment selector + embedded Channex chat. `messages.iframeSession` mints a Channex one-time token server-side (API key never in browser) and returns the `/auth/exchange?...&redirect_to=/messages` URL; rendered in a sandboxed iframe. Needs the Channex **Messages app** installed on the property; threads only appear with a real messaging-capable OTA channel |
+| Guest inbox (Messages) | `/messages` → tab **Inbox**: per-apartment selector + embedded Channex chat. `messages.iframeSession` mints a Channex one-time token server-side (API key never in browser) and returns the `/auth/exchange?...&redirect_to=/messages` URL; rendered in a sandboxed iframe. Needs the Channex **Messages app** installed on the property; threads only appear with a real messaging-capable OTA channel |
+| Message templates (M2) | `/messages` → tab **Vorlagen**: `messageTemplates` router (list/create/update/delete/vars/sendTest). Tenant-scoped, fixed channel per template (sms/airbnb/booking_com/email), trigger DSL string stored, `{{placeholder}}` body. Editor dialog with trigger presets + variable chips + preview/test. SMS test-send via dependency-free Twilio REST (`services/twilio.ts`); graceful "not configured" if `TWILIO_*` unset. **Triggers stored but not yet evaluated — automation is M3.** |
 | Property onboarding | Click "Verbinden" → creates Channex Property + Room Type + Rate Plan + DB mapping + initial ARI enqueue |
 | Mobile nav | Bottom tab bar Kalender / Nachrichten / Reinigung / Menü (last three are placeholders) |
 
@@ -150,7 +153,7 @@ channel-manager/
 │       └── src/inngest/        client, events.ts, functions/ (ari-flush, ari-resolve, ingest-bookings, channex-booking-mapper)
 ├── packages/
 │   ├── db/                     Drizzle schema (incl. ari_pending, rate_overrides, tenants.rate_source), migrations 0001–0007, post-migrate SQL (RLS + realtime), scripts/
-│   ├── api/                    tRPC routers: me, propertyGroups, properties, bookings, sync, rates, settings, messages; services/ari.ts (enqueueAri); AppContext + AppEvents
+│   ├── api/                    tRPC routers: me, propertyGroups, properties, bookings, sync, rates, settings, messages, messageTemplates; services/ (ari, twilio, templates, onboarding); AppContext + AppEvents
 │   ├── channex/                Typed REST client (auth/one_time_token, properties incl. crsCapable, room_types, rate_plans, availability, restrictions, bookings incl. create + feed, webhooks)
 │   ├── shared/                 Zod schemas, branded types, constants (Plan limits, OTA name mappings)
 │   └── ui/                     cn() helper; expand when sharing components between apps
@@ -216,6 +219,11 @@ Booking in Airbnb (or any connected OTA) — sandbox: simulator mints it
    inside the step before returning. Done in sync-rates.
 6. **iCloud + `node_modules`** — sometimes hangs install. Use pnpm
    global store outside iCloud; pause iCloud sync during heavy ops.
+   Also: iCloud can interrupt an editor's atomic write (temp → rename),
+   leaving a `*.tmp.NNNN.*` file and the real file missing/shown as
+   deleted in `git status`. Fix: the `.tmp` holds the intended content —
+   `mv` it back over the target, then re-typecheck. Don't commit the
+   `.tmp`.
 7. **tsx-watch in apps/worker doesn't pick up changes in
    `packages/channex` etc.** — manual worker restart needed after
    touching packages.
@@ -384,6 +392,8 @@ once during dev; consider rotating again before any deployment.
 | `DATABASE_URL_DIRECT` | Direct (port 5432), migrations only |
 | `CHANNEX_API_KEY` | Channex User Profile (sandbox or prod) |
 | `CHANNEX_WEBHOOK_SECRET` | 48-char random string, put into Channex webhook URL |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | Twilio Console → Account Info (optional; SMS test/automation) |
+| `TWILIO_FROM` | Twilio number (E.164) or approved alphanumeric sender id |
 | `VITE_SUPABASE_*` | Browser-side duplicates of SUPABASE_* (anon key only) |
 
 ---
