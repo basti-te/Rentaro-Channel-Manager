@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@cm/api';
@@ -13,6 +13,53 @@ import { Label } from '../components/ui/Label';
 import { Card } from '../components/ui/Card';
 import { Skeleton } from '../components/ui/Skeleton';
 import { trpc } from '../lib/trpc';
+
+const SELECT_CLS =
+  'h-10 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none transition-colors disabled:opacity-60';
+
+/** Full IANA / ISO-4217 lists via Intl, with a tiny fallback. */
+function intlValues(kind: 'timeZone' | 'currency', fallback: string[]): string[] {
+  const fn = (Intl as unknown as {
+    supportedValuesOf?: (k: string) => string[];
+  }).supportedValuesOf;
+  try {
+    const v = fn?.(kind);
+    return v && v.length > 0 ? v : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const TZ_FALLBACK = [
+  'Europe/Berlin',
+  'Europe/Vienna',
+  'Europe/Zurich',
+  'Europe/London',
+  'Europe/Madrid',
+  'UTC',
+];
+const CUR_FALLBACK = ['EUR', 'USD', 'GBP', 'CHF'];
+
+/** Ensure the saved value is selectable even if Intl omits it. */
+function withCurrent(list: string[], current: string): string[] {
+  return list.includes(current) ? list : [current, ...list];
+}
+
+const currencyName = (() => {
+  try {
+    const dn = new Intl.DisplayNames(['de'], { type: 'currency' });
+    return (code: string) => {
+      try {
+        const n = dn.of(code);
+        return n && n !== code ? `${code} — ${n}` : code;
+      } catch {
+        return code;
+      }
+    };
+  } catch {
+    return (code: string) => code;
+  }
+})();
 
 export function SettingsPage() {
   const utils = trpc.useUtils();
@@ -102,6 +149,14 @@ function GeneralSection({
   const [taxPct, setTaxPct] = useState(
     (data.defaultCityTaxRateBp / 100).toString(),
   );
+  const tzOptions = useMemo(
+    () => withCurrent(intlValues('timeZone', TZ_FALLBACK), data.defaultTimezone),
+    [data.defaultTimezone],
+  );
+  const curOptions = useMemo(
+    () => withCurrent(intlValues('currency', CUR_FALLBACK), data.defaultCurrency),
+    [data.defaultCurrency],
+  );
   const [ci, setCi] = useState(data.defaultCheckinTime);
   const [co, setCo] = useState(data.defaultCheckoutTime);
 
@@ -158,27 +213,35 @@ function GeneralSection({
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label htmlFor="s-tz">Zeitzone</Label>
-            <Input
+            <select
               id="s-tz"
               value={tz}
               onChange={(e) => setTz(e.target.value)}
-              placeholder="Europe/Berlin"
               disabled={disabled}
-              required
-            />
+              className={SELECT_CLS}
+            >
+              {tzOptions.map((z) => (
+                <option key={z} value={z}>
+                  {z}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="s-cur">Währung</Label>
-            <Input
+            <select
               id="s-cur"
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              placeholder="EUR"
-              maxLength={3}
-              className="uppercase"
               disabled={disabled}
-              required
-            />
+              className={SELECT_CLS}
+            >
+              {curOptions.map((c) => (
+                <option key={c} value={c}>
+                  {currencyName(c)}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-3">
