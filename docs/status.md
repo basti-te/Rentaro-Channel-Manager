@@ -32,22 +32,20 @@ If install hangs, pause iCloud or move the repo to a non-iCloud path.
 **Recent commits (`git log --oneline -12`):**
 
 ```
+1c409bb cleaning: Reinigung UI — rules + checklists + teammates (stage D)
+6641810 cleaning: automated dispatch cron + Twilio status (stage C)
+ff216a5 cleaning: API — teammates, checklists, rules routers (stage B)
+80c253e cleaning: schema — teammates, checklists, rules, outbox (stage A)
+0aac9b5 docs: status.md — session handoff refresh
+b428d40 settings: pin Europe/Berlin & EUR to top of the dropdowns
+310e16e settings: timezone & currency as dropdowns
+99237ab docs: status.md — Settings page
 a603605 settings: build Settings page (Allgemein + Preise + SMS)
 97e6c9c messages: custom variables UI — Variablen tab (stage C)
 dfce021 messages: custom variables — schema + API + render (stages A+B)
 628b7c4 messages M4 stage 3: per-booking override toggle in booking detail
-0c56df7 messages M4 stage 2: structured trigger builder + apartment allow-list
-40d41de messages M4 stage 1: apartment scope + override + reservation trigger
-5f78a33 messages: per-booking message timeline in the detail sheet
-d07755b messages: automated trigger dispatch + delivery status (M3)
-c189a35 docs: status.md — per-tenant SMS sender (ADR 0008)
-9c5d829 messages: per-tenant SMS sender (account env as fallback)
-5a84aee messages: template CRUD + SMS test-send (M2)
-22ef628 messages: embed Channex guest inbox via one-time-token iframe
-bd5fa89 docs: ADR 0007 — one room type + one rate plan per property
-6017898 Phase 9d: calendar rate/restriction editor (live-review ready)
-92473d4 Phase 9c: per-tenant rateSource (pms | pricelabs)
 ```
+(Reinigung commit added by this session; see `git log` for the rest.)
 
 ## Phase status
 
@@ -70,7 +68,7 @@ bd5fa89 docs: ADR 0007 — one room type + one rate plan per property
 | M1 | Channex guest-inbox iframe (OTT-embedded) | ✅ |
 | M2 | Message templates CRUD + SMS test-send (Twilio) | ✅ |
 | M3 | Trigger scheduler + automated send + delivery status | ✅ |
-| — | Reinigung (cleaning module) | ⬜ planned |
+| Rein | Reinigung — teammate SMS automation (rules/checklists) | ✅ |
 | — | Messaging Option B (own inbox + AI/KB auto-reply) | ⬜ planned (decided against for now — Option A iframe shipped) |
 | Set | Settings page (Allgemein + Preise + SMS) | ✅ |
 | — | Stripe billing | ⬜ deferred to SaaS launch |
@@ -145,6 +143,7 @@ deliberately out of scope. Rationale + additive migration path in
 | Automated dispatch (M3) | `messages-dispatch` Inngest cron (every 10 min): parses each active template's trigger (`booking_created`, `checkin/checkout:±Nd@HH:MM`, DST-correct via Intl + tenant tz), finds due (booking × template), atomically claims a `messages` row (unique `booking_id+template_id`, ON CONFLICT DO NOTHING), renders `{{vars}}` from the booking, sends per channel (SMS→Twilio, OTA→`channex.bookings.sendMessage`), walks status `queued→sent→delivered/failed`; stuck-`queued` retried. 2-day grace prevents backfill spam. Twilio `StatusCallback` → `/api/webhooks/twilio/:secret` advances delivered/failed (needs public URL — skipped in local dev). `messages.listByBooking` + `messages.timelineForBooking` (merges projected template schedule with real rows). Manual `messages/dispatch.now` trigger alongside the cron. Booking detail sheet shows a hierarchical **Nachrichten** section. **Verified live:** real Twilio send (SID); trigger/DST math 9/9. |
 | Automation builder (M4) | **Apartment scope (explicit allow-list)** via `message_template_listings` — a template reaches nobody until apartments are assigned; **per-booking override** via `message_booking_overrides` (force on/off; resolution = override ?? in-scope, shared `isTemplateEnabledForBooking`). DSL gains a `reservation` anchor (`reservation:±Nd@HH:MM`, booking-creation date in tenant tz; legacy `booking_created` still parsed; offsets capped 90d). Template editor: structured trigger builder (Ereignis → Relation per anchor → Tage 1–90 → Uhrzeit, listing-local) + Apartments checkbox allow-list. Booking detail: per-template Switch + "Deaktiviert" group + "auf Apartment-Standard" reset. Dispatch + timeline both honor scope+override. **Verified live (3 stages):** trigger/scope 11/11; builder round-trips `checkin:-1d@18:00`; Whg 0 assignment persists; Whg 8 out-of-scope booking toggled on → Geplant + override, persists. [ADR 0008-style decision: explicit list + both override layers.] |
 | Custom variables | Tenant-defined `{{placeholders}}` (`message_variables` key/label, unique per tenant, no built-in collision) filled **per apartment** (`message_variable_values`). `resolveCustomVars(tenant, property)` merges into dispatch + timeline render; unset apartment → `{{key}}` stays literal (chosen fallback). `messageVariables` router (list/create/update/delete/setValue); `messageTemplates.vars` returns built-in + custom for editor chips. UI: third **Variablen** tab (create + per-apartment value editor) + custom chip in the template editor. **Verified live:** `{{wifiCode}}` created, Whg 0 filled (1/16, persists), chip shows in editor. |
+| Reinigung (cleaning) | `/cleaning` → tabs **Regeln** + **Checklisten**. Cleaning rules mirror message templates but notify internal **Teammates** (Settings → Teammates, name/phone/active) by SMS instead of the guest. Rule = shared trigger DSL (reservation/checkin/checkout:±Nd@HH:MM via the shared `TriggerBuilder`) + explicit apartment allow-list + N teammates (fan-out) + optional **reusable checklist** rendered via `{{checklist}}`. Cleaning vars include the **next reservation** for the apartment (`nextCheckinDate/Time`, `nextGuestName`, `nextGuestCount`, `nextNotes`); missing → placeholder stays literal. `cleaning-dispatch` Inngest cron (every 10 min + `cleaning/dispatch.now`) mirrors `messages-dispatch`: atomic claim on unique `(rule,booking,teammate)`, Twilio send, status walk, stuck-retry, 2-day grace. Twilio status webhook also advances `cleaning_messages`. `cleaning_messages` in the Realtime publication. **Verified via throwaway E2E:** trigger due-time, next-reservation (same-day turnover), checklist render, dedupe 4/4. [ADR 0009](adr/0009-reinigung-module.md). |
 | Property onboarding | Click "Verbinden" → creates Channex Property + Room Type + Rate Plan + DB mapping + initial ARI enqueue |
 | Mobile nav | Bottom tab bar Kalender / Nachrichten / Reinigung / Menü (last three are placeholders) |
 
@@ -158,10 +157,10 @@ channel-manager/
 │   ├── web/                    React 18 + Vite + Tailwind, TanStack Router + Query, tRPC client
 │   │   └── src/routes/calendar/   The hard UI; Calendar.tsx is the grid, NewBookingDialog, BookingDetailSheet
 │   └── worker/                 Hono on :3001 — tRPC + Inngest serve + Channex webhook receiver
-│       └── src/inngest/        client, events.ts, functions/ (ari-flush, ari-resolve, ingest-bookings, channex-booking-mapper, messages-dispatch); webhooks/ (channex, twilio)
+│       └── src/inngest/        client, events.ts, functions/ (ari-flush, ari-resolve, ingest-bookings, channex-booking-mapper, messages-dispatch, cleaning-dispatch); webhooks/ (channex, twilio)
 ├── packages/
 │   ├── db/                     Drizzle schema (incl. ari_pending, rate_overrides, tenants.rate_source), migrations 0001–0007, post-migrate SQL (RLS + realtime), scripts/
-│   ├── api/                    tRPC routers: me, propertyGroups, properties, bookings, sync, rates, settings, messages, messageTemplates; services/ (ari, twilio, templates, onboarding); AppContext + AppEvents
+│   ├── api/                    tRPC routers: me, propertyGroups, properties, bookings, sync, rates, settings, messages, messageTemplates, messageVariables, teammates, cleaningChecklists, cleaningRules; services/ (ari, twilio, templates, triggers, scope, custom-vars, cleaning, onboarding); AppContext + AppEvents
 │   ├── channex/                Typed REST client (auth/one_time_token, properties incl. crsCapable, room_types, rate_plans, availability, restrictions, bookings incl. create + feed, webhooks)
 │   ├── shared/                 Zod schemas, branded types, constants (Plan limits, OTA name mappings)
 │   └── ui/                     cn() helper; expand when sharing components between apps
@@ -170,7 +169,7 @@ channel-manager/
     ├── status.md               THIS FILE
     ├── setup.md                first-time setup guide
     ├── channex-webhook-setup.md  registering the global webhook in production
-    └── adr/                    0001–0008 architecture decisions
+    └── adr/                    0001–0009 architecture decisions
 ```
 
 ### Sync data flow (end-to-end, verified against sandbox)
@@ -298,12 +297,20 @@ Booking in Airbnb (or any connected OTA) — sandbox: simulator mints it
   variables** (per-apartment values).
 - **Settings page** `/settings` (Allgemein/Preise/SMS, tz+currency
   dropdowns, Berlin/EUR pinned).
+- **Reinigung module** (ADR 0009): teammate SMS automation — rules
+  (shared trigger DSL + apartment allow-list + N-teammate fan-out +
+  optional reusable checklist + next-reservation vars), `/cleaning`
+  page (Regeln/Checklisten), Teammates in Settings, `cleaning-dispatch`
+  cron, shared `TriggerBuilder` extracted from the message editor.
 
 ### Genuinely next (good candidates)
 
-- **Reinigung module**. New schema `cleaning_tasks` (auto-generated
-  from bookings), `cleaners`, `cleaner_assignments`; calendar-like
-  view, drag-assign, SMS via the existing Twilio service.
+- **Cleaning follow-ups** (intentionally deferred from ADR 0009):
+  per-booking on/off override for cleaning rules (messaging has one);
+  a "letzte/geplante Erinnerungen" timeline on `/cleaning` (would use
+  a `useCleaningMessagesRealtime` hook — `cleaning_messages` is already
+  in the Realtime publication; no message-history UI consumes it yet);
+  cleaner status-back (currently SMS one-way).
 - **Messaging polish**: custom-variable label edit (API
   `messageVariables.update` exists, no UI); test-send with apartment
   picker (custom vars resolve); searchable combobox for the long
@@ -434,10 +441,14 @@ Paste this in the new session's first message:
 
 ### Operational notes for the next session (read these)
 
-- **Everything is committed.** `git log` HEAD ≈
-  `b428d40 settings: pin Europe/Berlin & EUR …`. Working tree is clean
-  **except** `packages/db/migrations/9999_rls_policies.sql`, which is
+- **Everything is committed.** `git log` HEAD ≈ the docs commit that
+  accompanies the Reinigung stages (`cleaning: …` A–D + this status
+  update). Working tree is clean **except**
+  `packages/db/migrations/9999_rls_policies.sql`, which is
   **intentionally left untracked** — do not commit it, do not delete it.
+  (RLS for new tables goes in `packages/db/post-migrate/01_rls_policies.sql`,
+  applied by `pnpm --filter @cm/db migrate`; the `migrations/9999_…` file
+  is a separate untracked artifact, not the applied path.)
 - **Dev servers** (start if not running, from the repo root):
   - `pnpm --filter @cm/worker dev` → tRPC + Inngest + webhooks on **:3001**
   - `pnpm --filter @cm/web dev` → Vite SPA on **:5173**
@@ -458,6 +469,6 @@ Paste this in the new session's first message:
   prefer a throwaway script under `packages/db/scripts/` for logic
   E2E, deleted after. Commit per feature with the established message
   style; update this file as part of the change.
-- **Decisions are ADRs** `docs/adr/0001–0008`. The Channex
+- **Decisions are ADRs** `docs/adr/0001–0009`. The Channex
   certification status + the deliberate single-room-type scope are in
   the phase/cert tables above and ADR 0007.
