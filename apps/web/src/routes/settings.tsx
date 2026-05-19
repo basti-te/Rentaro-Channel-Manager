@@ -8,6 +8,7 @@ type TenantData = inferRouterOutputs<AppRouter>['settings']['tenant'];
 
 import { PageHeader } from './_dashboard';
 import { Trash2, Plus } from 'lucide-react';
+import { BillingCard } from '../components/BillingCard';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Label } from '../components/ui/Label';
@@ -128,6 +129,7 @@ export function SettingsPage() {
               onSaved={() => utils.settings.tenant.invalidate()}
             />
             <TeammatesSection disabled={!isAdmin} />
+            <BillingCard context="settings" />
           </>
         )}
       </div>

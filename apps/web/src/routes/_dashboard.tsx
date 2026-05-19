@@ -15,6 +15,7 @@ import { cn } from '@cm/ui';
 
 import { Brand } from '../components/Brand';
 import { MobileTabBar, MOBILE_TAB_BAR_H } from '../components/MobileTabBar';
+import { LockoutScreen } from '../components/LockoutScreen';
 import { useAuth } from '../lib/auth';
 import { trpc } from '../lib/trpc';
 
@@ -71,6 +72,15 @@ export function DashboardLayout() {
     }
   }, [auth.user, meQ.data, bootstrap, bootstrapping]);
 
+  // Plan / subscription gate — read regardless of route. Tenant context
+  // available only after meQ resolves with at least one membership.
+  const hasTenant = !!meQ.data?.memberships.length;
+  const planQ = trpc.billing.currentPlan.useQuery(undefined, {
+    enabled: hasTenant,
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+  });
+
   if (auth.loading || !auth.user) {
     return <FullPageLoader label="Authenticating…" />;
   }
@@ -79,6 +89,7 @@ export function DashboardLayout() {
   }
 
   const tenant = meQ.data?.memberships[0];
+  const accessBlocked = hasTenant && planQ.data && !planQ.data.ok;
 
   return (
     <div
@@ -102,7 +113,7 @@ export function DashboardLayout() {
       </div>
 
       <main className="flex-1 min-w-0 pb-[var(--mobile-bar-h)] md:pb-0">
-        <Outlet />
+        {accessBlocked ? <LockoutScreen /> : <Outlet />}
       </main>
 
       {/* Mobile bottom tab bar — hidden on md+ */}
