@@ -4,6 +4,7 @@ export type { Events } from './events';
 import { ariFlush, ariFlushCron } from './functions/ari-flush';
 import { ingestBookings } from './functions/ingest-bookings';
 import { messagesDispatch } from './functions/messages-dispatch';
+import { cleaningDispatch } from './functions/cleaning-dispatch';
 
 /**
  * All functions Inngest should serve. Add new ones here.
@@ -18,4 +19,5 @@ export const inngestFunctions = [
   ariFlushCron,
   ingestBookings,
   messagesDispatch,
+  cleaningDispatch,
 ];

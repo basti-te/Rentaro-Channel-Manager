@@ -58,4 +58,14 @@ export type Events = {
       reason?: string;
     };
   };
+
+  /**
+   * Run the automated cleaning-reminder dispatch immediately, in addition
+   * to its 10-minute cron. Useful for ops and testing.
+   */
+  'cleaning/dispatch.now': {
+    data: {
+      reason?: string;
+    };
+  };
 };

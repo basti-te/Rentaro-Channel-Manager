@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { createDb, messages } from '@cm/db';
+import { createDb, messages, cleaningMessages } from '@cm/db';
 import { eq } from 'drizzle-orm';
 import { env } from '../env';
 
@@ -18,8 +18,9 @@ function safeEqual(a: string, b: string): boolean {
  *   form: MessageSid, MessageStatus (queued|sending|sent|delivered|
  *         undelivered|failed), ErrorCode?
  *
- * Maps the Twilio status onto our `messages` row by external_id. Only ever
- * advances status; never resurrects a delivered/failed row.
+ * Maps the Twilio status onto our `messages` (guest) and `cleaning_messages`
+ * (teammate) rows by external_id. Only ever advances status; never
+ * resurrects a delivered/failed row.
  *
  * Note: needs a public URL — in local dev Twilio can't reach localhost, so
  * this endpoint simply never fires and rows stay at "sent".
@@ -46,14 +47,19 @@ twilioWebhook.post('/:secret', async (c) => {
   if (!next) return c.json({ received: true }); // queued/sending/sent → ignore
 
   const db = createDb(env.DATABASE_URL);
+  const patch =
+    next === 'delivered'
+      ? { status: 'delivered' as const, deliveredAt: new Date() }
+      : {
+          status: 'failed' as const,
+          error: `twilio_${twStatus}${errorCode ? `:${errorCode}` : ''}`,
+        };
+  // The SID belongs to exactly one of the two tables; the other no-ops.
+  await db.update(messages).set(patch).where(eq(messages.externalId, sid));
   await db
-    .update(messages)
-    .set(
-      next === 'delivered'
-        ? { status: 'delivered', deliveredAt: new Date() }
-        : { status: 'failed', error: `twilio_${twStatus}${errorCode ? `:${errorCode}` : ''}` },
-    )
-    .where(eq(messages.externalId, sid));
+    .update(cleaningMessages)
+    .set(patch)
+    .where(eq(cleaningMessages.externalId, sid));
 
   return c.json({ received: true });
 });
