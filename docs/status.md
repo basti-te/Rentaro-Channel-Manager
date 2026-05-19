@@ -16,6 +16,9 @@ cd C:\Users\User\iCloudDrive\channel-manager
 pnpm --filter @cm/worker dev                         # tRPC + Inngest + webhooks on :3001
 pnpm --filter @cm/web dev                            # Vite SPA on :5173
 npx inngest-cli@latest dev -u http://localhost:3001/api/inngest --no-discovery  # Inngest dashboard :8288
+
+# Optional 4th terminal — when working on billing locally:
+stripe listen --forward-to localhost:3001/api/webhooks/stripe
 ```
 
 Then open `http://localhost:5173/` → magic-link login → calendar.
@@ -32,6 +35,11 @@ If install hangs, pause iCloud or move the repo to a non-iCloud path.
 **Recent commits (`git log --oneline -12`):**
 
 ```
+fb55cb8 billing: Billing UI + total lockout (stage D)
+b0bedf5 billing: Stripe webhook + dispatcher + reconcile cron (stage C)
+f7dcd88 billing: Stripe services + plan-guard + billing router (stage B)
+e288ac9 billing: schema — billingExempt + subscription extras (stage A)
+b97defe docs: ADR 0009 + status.md — Reinigung module
 1c409bb cleaning: Reinigung UI — rules + checklists + teammates (stage D)
 6641810 cleaning: automated dispatch cron + Twilio status (stage C)
 ff216a5 cleaning: API — teammates, checklists, rules routers (stage B)
@@ -39,13 +47,8 @@ ff216a5 cleaning: API — teammates, checklists, rules routers (stage B)
 0aac9b5 docs: status.md — session handoff refresh
 b428d40 settings: pin Europe/Berlin & EUR to top of the dropdowns
 310e16e settings: timezone & currency as dropdowns
-99237ab docs: status.md — Settings page
-a603605 settings: build Settings page (Allgemein + Preise + SMS)
-97e6c9c messages: custom variables UI — Variablen tab (stage C)
-dfce021 messages: custom variables — schema + API + render (stages A+B)
-628b7c4 messages M4 stage 3: per-booking override toggle in booking detail
 ```
-(Reinigung commit added by this session; see `git log` for the rest.)
+(Stripe billing + Reinigung added in recent sessions; see `git log` for the rest.)
 
 ## Phase status
 
@@ -71,8 +74,8 @@ dfce021 messages: custom variables — schema + API + render (stages A+B)
 | Rein | Reinigung — teammate SMS automation (rules/checklists) | ✅ |
 | — | Messaging Option B (own inbox + AI/KB auto-reply) | ⬜ planned (decided against for now — Option A iframe shipped) |
 | Set | Settings page (Allgemein + Preise + SMS) | ✅ |
-| — | Stripe billing | ⬜ deferred to SaaS launch |
-| — | Self-service onboarding | ⬜ deferred |
+| Bill | Stripe SaaS billing — plans/subscriptions/metering/portal | ✅ |
+| — | Self-service signup (public landing + signup form) | ⬜ deferred |
 | — | Reviews automation | ⬜ planned (data model already in place) |
 | — | Hardening (Sentry, tests, runbooks) | ⬜ planned |
 
@@ -144,6 +147,7 @@ deliberately out of scope. Rationale + additive migration path in
 | Automation builder (M4) | **Apartment scope (explicit allow-list)** via `message_template_listings` — a template reaches nobody until apartments are assigned; **per-booking override** via `message_booking_overrides` (force on/off; resolution = override ?? in-scope, shared `isTemplateEnabledForBooking`). DSL gains a `reservation` anchor (`reservation:±Nd@HH:MM`, booking-creation date in tenant tz; legacy `booking_created` still parsed; offsets capped 90d). Template editor: structured trigger builder (Ereignis → Relation per anchor → Tage 1–90 → Uhrzeit, listing-local) + Apartments checkbox allow-list. Booking detail: per-template Switch + "Deaktiviert" group + "auf Apartment-Standard" reset. Dispatch + timeline both honor scope+override. **Verified live (3 stages):** trigger/scope 11/11; builder round-trips `checkin:-1d@18:00`; Whg 0 assignment persists; Whg 8 out-of-scope booking toggled on → Geplant + override, persists. [ADR 0008-style decision: explicit list + both override layers.] |
 | Custom variables | Tenant-defined `{{placeholders}}` (`message_variables` key/label, unique per tenant, no built-in collision) filled **per apartment** (`message_variable_values`). `resolveCustomVars(tenant, property)` merges into dispatch + timeline render; unset apartment → `{{key}}` stays literal (chosen fallback). `messageVariables` router (list/create/update/delete/setValue); `messageTemplates.vars` returns built-in + custom for editor chips. UI: third **Variablen** tab (create + per-apartment value editor) + custom chip in the template editor. **Verified live:** `{{wifiCode}}` created, Whg 0 filled (1/16, persists), chip shows in editor. |
 | Reinigung (cleaning) | `/cleaning` → tabs **Regeln** + **Checklisten**. Cleaning rules mirror message templates but notify internal **Teammates** (Settings → Teammates, name/phone/active) by SMS instead of the guest. Rule = shared trigger DSL (reservation/checkin/checkout:±Nd@HH:MM via the shared `TriggerBuilder`) + explicit apartment allow-list + N teammates (fan-out) + optional **reusable checklist** rendered via `{{checklist}}`. Cleaning vars include the **next reservation** for the apartment (`nextCheckinDate/Time`, `nextGuestName`, `nextGuestCount`, `nextNotes`); missing → placeholder stays literal. `cleaning-dispatch` Inngest cron (every 10 min + `cleaning/dispatch.now`) mirrors `messages-dispatch`: atomic claim on unique `(rule,booking,teammate)`, Twilio send, status walk, stuck-retry, 2-day grace. Twilio status webhook also advances `cleaning_messages`. `cleaning_messages` in the Realtime publication. **Verified via throwaway E2E:** trigger due-time, next-reservation (same-day turnover), checklist render, dedupe 4/4. [ADR 0009](adr/0009-reinigung-module.md). |
+| Billing (Stripe) | Hybrid pricing (base fee + per-property), monthly + annual −10 %, 14-day no-card trial, total lockout on past_due/canceled/expired-trial. `/settings` → Billing section: trial countdown, plan picker (Monatlich / Jährlich), "Kundenportal öffnen" → Stripe-hosted billing portal. Plan picker → Stripe Checkout (Stripe Tax auto, tax id collection, promotion codes allowed; trial_period_days = remaining local-trial days for seamless continuation). Webhook `POST /api/webhooks/stripe` (signature-verified, no URL secret), idempotent via `webhook_deliveries` UNIQUE(source,external_id); `stripe-event` Inngest function refetches and runs `syncSubscriptionFromStripe`. Daily `billing-reconcile` cron (03:15) pushes active-property count → Stripe quantity. Plan gate lives on `editorProcedure`/`adminProcedure`/`ownerProcedure` (single source of truth — all mutating routers inherit); `billingProcedure` is the ungated escape hatch for checkout/portal. Front-end mirror: `_dashboard.tsx` renders `<LockoutScreen />` in place of `<Outlet />` when blocked. Owner workspace `billingExempt=true` (backfilled in migration 0013) bypasses everything. **Verified via throwaway E2E:** owner exempt, new-tenant trial creation, trial-expired block, past_due block — 7/7. Stripe-side flow (Checkout → webhook → sync) needs `stripe listen` + test keys — see [docs/stripe-setup.md](stripe-setup.md). [ADR 0010](adr/0010-stripe-billing.md). |
 | Property onboarding | Click "Verbinden" → creates Channex Property + Room Type + Rate Plan + DB mapping + initial ARI enqueue |
 | Mobile nav | Bottom tab bar Kalender / Nachrichten / Reinigung / Menü (last three are placeholders) |
 
@@ -157,10 +161,10 @@ channel-manager/
 │   ├── web/                    React 18 + Vite + Tailwind, TanStack Router + Query, tRPC client
 │   │   └── src/routes/calendar/   The hard UI; Calendar.tsx is the grid, NewBookingDialog, BookingDetailSheet
 │   └── worker/                 Hono on :3001 — tRPC + Inngest serve + Channex webhook receiver
-│       └── src/inngest/        client, events.ts, functions/ (ari-flush, ari-resolve, ingest-bookings, channex-booking-mapper, messages-dispatch, cleaning-dispatch); webhooks/ (channex, twilio)
+│       └── src/inngest/        client, events.ts, functions/ (ari-flush, ari-resolve, ingest-bookings, channex-booking-mapper, messages-dispatch, cleaning-dispatch, stripe-event, billing-reconcile); webhooks/ (channex, twilio, stripe)
 ├── packages/
 │   ├── db/                     Drizzle schema (incl. ari_pending, rate_overrides, tenants.rate_source), migrations 0001–0007, post-migrate SQL (RLS + realtime), scripts/
-│   ├── api/                    tRPC routers: me, propertyGroups, properties, bookings, sync, rates, settings, messages, messageTemplates, messageVariables, teammates, cleaningChecklists, cleaningRules; services/ (ari, twilio, templates, triggers, scope, custom-vars, cleaning, onboarding); AppContext + AppEvents
+│   ├── api/                    tRPC routers: me, propertyGroups, properties, bookings, sync, rates, settings, messages, messageTemplates, messageVariables, teammates, cleaningChecklists, cleaningRules, billing; services/ (ari, twilio, templates, triggers, scope, custom-vars, cleaning, stripe, plan-guard, onboarding); AppContext + AppEvents
 │   ├── channex/                Typed REST client (auth/one_time_token, properties incl. crsCapable, room_types, rate_plans, availability, restrictions, bookings incl. create + feed, webhooks)
 │   ├── shared/                 Zod schemas, branded types, constants (Plan limits, OTA name mappings)
 │   └── ui/                     cn() helper; expand when sharing components between apps
@@ -169,7 +173,7 @@ channel-manager/
     ├── status.md               THIS FILE
     ├── setup.md                first-time setup guide
     ├── channex-webhook-setup.md  registering the global webhook in production
-    └── adr/                    0001–0009 architecture decisions
+    └── adr/                    0001–0010 architecture decisions
 ```
 
 ### Sync data flow (end-to-end, verified against sandbox)
@@ -302,6 +306,13 @@ Booking in Airbnb (or any connected OTA) — sandbox: simulator mints it
   optional reusable checklist + next-reservation vars), `/cleaning`
   page (Regeln/Checklisten), Teammates in Settings, `cleaning-dispatch`
   cron, shared `TriggerBuilder` extracted from the message editor.
+- **Stripe SaaS billing** (ADR 0010): hybrid pricing (base +
+  per-property), monthly + annual −10 %, 14-day no-card trial, total
+  lockout on failure/expiry. Plan guard on editor/admin/owner
+  procedures + ungated `billingProcedure` escape hatch; webhook +
+  daily reconcile via Inngest; `<BillingCard>` + `<LockoutScreen>` UI.
+  Owner workspace exempt via `tenants.billingExempt` (backfilled).
+  Operator setup: [docs/stripe-setup.md](stripe-setup.md).
 
 ### Genuinely next (good candidates)
 
@@ -337,8 +348,12 @@ Booking in Airbnb (or any connected OTA) — sandbox: simulator mints it
 
 ### Deferred to actual SaaS launch
 
-- Stripe billing (Phase 9), multi-tenant onboarding flow (Phase 10),
-  reviews automation (Phase 11).
+- **Public signup flow** — landing page, signup form, magic-link
+  invite to a fresh workspace. Currently bootstrap happens on first
+  Supabase login (no marketing front door).
+- **SMS overage / usage-based billing** — pass Twilio cost through to
+  the tenant invoice via Stripe usage records. Plumbing not yet built.
+- **Reviews automation** (Phase 11).
 
 ### Smaller polish items
 
@@ -426,6 +441,10 @@ once during dev; consider rotating again before any deployment.
 | `TWILIO_FROM` | Twilio number (E.164) or approved alphanumeric sender id |
 | `TWILIO_STATUS_SECRET` | Path secret for `/api/webhooks/twilio/:secret` (optional) |
 | `PUBLIC_WEBHOOK_BASE_URL` | Public base URL for inbound webhooks; unset in dev → Twilio status callback skipped |
+| `STRIPE_SECRET_KEY` | Stripe Dashboard → Developers → API keys (test or live). Optional; billing degrades to "not configured" if unset. |
+| `STRIPE_WEBHOOK_SECRET` | `stripe listen` output in dev, or webhook endpoint signing secret in prod |
+| `STRIPE_PRICE_BASE_{MONTHLY,ANNUAL}` | The 2 Stripe Prices on the "Base" Product |
+| `STRIPE_PRICE_PROPERTY_{MONTHLY,ANNUAL}` | The 2 Stripe Prices on the "per Apartment" Product |
 | `VITE_SUPABASE_*` | Browser-side duplicates of SUPABASE_* (anon key only) |
 
 ---
@@ -442,8 +461,8 @@ Paste this in the new session's first message:
 ### Operational notes for the next session (read these)
 
 - **Everything is committed.** `git log` HEAD ≈ the docs commit that
-  accompanies the Reinigung stages (`cleaning: …` A–D + this status
-  update). Working tree is clean **except**
+  accompanies the Stripe-billing stages (`billing: …` A–D + this status
+  update; ADR 0010). Working tree is clean **except**
   `packages/db/migrations/9999_rls_policies.sql`, which is
   **intentionally left untracked** — do not commit it, do not delete it.
   (RLS for new tables goes in `packages/db/post-migrate/01_rls_policies.sql`,
@@ -469,6 +488,6 @@ Paste this in the new session's first message:
   prefer a throwaway script under `packages/db/scripts/` for logic
   E2E, deleted after. Commit per feature with the established message
   style; update this file as part of the change.
-- **Decisions are ADRs** `docs/adr/0001–0009`. The Channex
+- **Decisions are ADRs** `docs/adr/0001–0010`. The Channex
   certification status + the deliberate single-room-type scope are in
   the phase/cert tables above and ADR 0007.
