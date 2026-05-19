@@ -104,6 +104,9 @@ export const ariKindEnum = pgEnum('ari_kind', ['availability', 'rates']);
  */
 export const rateSourceEnum = pgEnum('rate_source', ['pms', 'pricelabs']);
 
+/** Billing cadence for a tenant's SaaS subscription. Annual gives -10%. */
+export const billingIntervalEnum = pgEnum('billing_interval', ['monthly', 'annual']);
+
 export const messageChannelEnum = pgEnum('message_channel', [
   'sms',
   'airbnb',
@@ -157,6 +160,13 @@ export const tenants = pgTable('tenants', {
    */
   smsSenderId: text('sms_sender_id'),
 
+  /**
+   * SaaS-billing bypass. `true` = exempt from the plan-gate / lockout
+   * (used for the project owner's own workspace and any comped accounts).
+   * `false` (default) = goes through the trial → Stripe Checkout flow.
+   */
+  billingExempt: boolean('billing_exempt').notNull().default(false),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -203,10 +213,18 @@ export const subscriptions = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     stripeSubscriptionId: text('stripe_subscription_id').unique(),
+    /** Stripe Price ID for the **base** subscription item. */
     stripePriceId: text('stripe_price_id'),
     plan: planEnum('plan').notNull(),
     status: subscriptionStatusEnum('status').notNull(),
-    quantity: integer('quantity').notNull().default(1), // for per-property metering
+    /** Per-property metered quantity (matches the property line item). */
+    quantity: integer('quantity').notNull().default(1),
+    /** monthly | annual (annual is -10%). NULL until first checkout. */
+    billingInterval: billingIntervalEnum('billing_interval'),
+    /** End of free trial (set on subscription create, NULL once paid). */
+    trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
+    /** Latest Stripe invoice for this subscription (for portal deep-links). */
+    latestInvoiceId: text('latest_invoice_id'),
     currentPeriodStart: timestamp('current_period_start', { withTimezone: true }),
     currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
     cancelAt: timestamp('cancel_at', { withTimezone: true }),
