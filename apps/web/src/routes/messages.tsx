@@ -8,6 +8,7 @@ import {
   Pencil,
   Trash2,
   Send,
+  Braces,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { inferRouterOutputs } from '@trpc/server';
@@ -26,7 +27,7 @@ import { trpc } from '../lib/trpc';
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type Template = RouterOutput['messageTemplates']['list'][number];
 
-type Tab = 'inbox' | 'templates';
+type Tab = 'inbox' | 'templates' | 'variables';
 
 const CHANNEL_LABEL: Record<string, string> = {
   sms: 'SMS',
@@ -113,6 +114,7 @@ export function MessagesPage() {
               [
                 { id: 'inbox' as const, label: 'Inbox', icon: Inbox },
                 { id: 'templates' as const, label: 'Vorlagen', icon: FileText },
+                { id: 'variables' as const, label: 'Variablen', icon: Braces },
               ]
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -136,7 +138,13 @@ export function MessagesPage() {
           </div>
         }
       />
-      {tab === 'inbox' ? <InboxView /> : <TemplatesView />}
+      {tab === 'inbox' ? (
+        <InboxView />
+      ) : tab === 'templates' ? (
+        <TemplatesView />
+      ) : (
+        <VariablesView />
+      )}
     </>
   );
 }
@@ -804,6 +812,170 @@ function TemplateDialog({
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ─── Variables ──────────────────────────────────────────────────────────────
+
+function VariablesView() {
+  const utils = trpc.useUtils();
+  const listQ = trpc.messageVariables.list.useQuery();
+  const propsQ = trpc.properties.list.useQuery();
+  const [newKey, setNewKey] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const refresh = () => {
+    utils.messageVariables.list.invalidate();
+    utils.messageTemplates.vars.invalidate();
+  };
+  const create = trpc.messageVariables.create.useMutation({
+    onSuccess: () => {
+      toast.success('Variable erstellt');
+      setNewKey('');
+      setNewLabel('');
+      refresh();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const del = trpc.messageVariables.delete.useMutation({
+    onSuccess: () => {
+      toast.success('Variable gelöscht');
+      refresh();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const setValue = trpc.messageVariables.setValue.useMutation({
+    onSuccess: () => utils.messageVariables.list.invalidate(),
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <div className="px-4 sm:px-6 md:px-8 py-6 max-w-4xl">
+      <p className="text-[13px] text-muted mb-4">
+        Eigene Platzhalter wie <span className="num">{'{{wifiCode}}'}</span> —
+        pro Apartment befüllbar, im Vorlagen-Editor verwendbar. Fehlt ein
+        Wert für ein Apartment, bleibt der Platzhalter im Text stehen.
+      </p>
+
+      {/* Create */}
+      <Card className="px-4 py-3 mb-4">
+        <div className="flex items-end gap-2 flex-wrap">
+          <div className="space-y-1">
+            <Label htmlFor="nv-key">Schlüssel</Label>
+            <Input
+              id="nv-key"
+              value={newKey}
+              onChange={(e) => setNewKey(e.target.value)}
+              placeholder="wifiCode"
+              className="w-40"
+            />
+          </div>
+          <div className="space-y-1 flex-1 min-w-[180px]">
+            <Label htmlFor="nv-label">Bezeichnung</Label>
+            <Input
+              id="nv-label"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="WLAN-Passwort"
+            />
+          </div>
+          <Button
+            variant="brand"
+            size="sm"
+            iconLeft={<Plus className="h-4 w-4" />}
+            loading={create.isPending}
+            disabled={!newKey.trim() || !newLabel.trim()}
+            onClick={() =>
+              create.mutate({ key: newKey.trim(), label: newLabel.trim() })
+            }
+          >
+            Variable
+          </Button>
+        </div>
+      </Card>
+
+      {listQ.isLoading ? (
+        <Skeleton className="h-24 w-full" />
+      ) : (listQ.data?.length ?? 0) === 0 ? (
+        <InfoCard
+          title="Noch keine Variablen"
+          body="Lege z. B. {{wifiCode}} an und befülle sie pro Apartment."
+        />
+      ) : (
+        <div className="space-y-2">
+          {listQ.data!.map((v) => {
+            const isOpen = expanded === v.id;
+            const valByProp = new Map(
+              v.values.map((x) => [x.propertyId, x.value]),
+            );
+            const filled = v.values.length;
+            return (
+              <Card key={v.id} className="overflow-hidden">
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <span className="num text-[13px] font-medium text-brand">
+                    {`{{${v.key}}}`}
+                  </span>
+                  <span className="text-[13px] text-ink truncate flex-1">
+                    {v.label}
+                  </span>
+                  <span className="text-[11px] text-muted">
+                    {filled}/{propsQ.data?.length ?? 0} befüllt
+                  </span>
+                  <button
+                    type="button"
+                    className="text-[12px] text-brand hover:underline"
+                    onClick={() => setExpanded(isOpen ? null : v.id)}
+                  >
+                    {isOpen ? 'Schließen' : 'Befüllen'}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-whisper hover:text-negative p-1 rounded hover:bg-negative-soft transition-colors"
+                    onClick={() => {
+                      if (confirm(`Variable {{${v.key}}} löschen?`))
+                        del.mutate({ id: v.id });
+                    }}
+                    aria-label="Löschen"
+                  >
+                    <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                  </button>
+                </div>
+                {isOpen && (
+                  <ul className="border-t border-line divide-y divide-line">
+                    {(propsQ.data ?? []).map((p) => (
+                      <li
+                        key={p.id}
+                        className="flex items-center gap-3 px-4 py-2"
+                      >
+                        <span className="text-[12.5px] text-ink-soft w-32 truncate">
+                          {p.name}
+                        </span>
+                        <Input
+                          defaultValue={valByProp.get(p.id) ?? ''}
+                          placeholder="(leer → Platzhalter bleibt)"
+                          className="flex-1"
+                          onBlur={(e) => {
+                            const next = e.target.value.trim();
+                            const cur = valByProp.get(p.id) ?? '';
+                            if (next !== cur)
+                              setValue.mutate({
+                                variableId: v.id,
+                                propertyId: p.id,
+                                value: next,
+                              });
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
