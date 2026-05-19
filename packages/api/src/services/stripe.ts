@@ -34,6 +34,24 @@ export function getStripe(env: AppContextEnv): Stripe | null {
   return _client;
 }
 
+/**
+ * Verify a Stripe webhook against `stripe-signature` and return the parsed
+ * Event. Throws if the secret/key is unset or the signature is invalid.
+ * Idempotency at the table level is the caller's responsibility
+ * (webhook_deliveries source='stripe', external_id=event.id).
+ */
+export function verifyStripeWebhook(
+  env: AppContextEnv,
+  rawBody: string,
+  signature: string,
+): Stripe.Event {
+  const stripe = getStripe(env);
+  if (!stripe || !env.STRIPE_WEBHOOK_SECRET) {
+    throw new Error('stripe_webhook_not_configured');
+  }
+  return stripe.webhooks.constructEvent(rawBody, signature, env.STRIPE_WEBHOOK_SECRET);
+}
+
 export function isStripeConfigured(env: AppContextEnv): boolean {
   return !!(
     env.STRIPE_SECRET_KEY &&

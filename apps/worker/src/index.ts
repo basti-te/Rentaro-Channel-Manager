@@ -9,6 +9,7 @@ import { env } from './env';
 import { inngest, inngestFunctions } from './inngest';
 import { channexWebhook } from './webhooks/channex';
 import { twilioWebhook } from './webhooks/twilio';
+import { stripeWebhook } from './webhooks/stripe';
 
 const app = new Hono();
 
@@ -54,6 +55,7 @@ app.all('/trpc/*', async (c) => {
 // ── Channex inbound webhooks ─────────────────────────────────────────────────
 app.route('/api/webhooks/channex', channexWebhook);
 app.route('/api/webhooks/twilio', twilioWebhook);
+app.route('/api/webhooks/stripe', stripeWebhook);
 
 const port = env.PORT;
 console.log(`→ API server on http://localhost:${port}`);

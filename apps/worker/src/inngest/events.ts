@@ -68,4 +68,26 @@ export type Events = {
       reason?: string;
     };
   };
+
+  /**
+   * A Stripe webhook arrived. Carries only the event id; the handler
+   * re-fetches via `stripe.events.retrieve` for tamper-resistance.
+   */
+  'stripe/event': {
+    data: {
+      eventId: string;
+      /** Telemetry only — handler refetches by id either way. */
+      type?: string;
+    };
+  };
+
+  /**
+   * Run the daily billing reconcile immediately (defensive sync of
+   * per-property quantity to Stripe), in addition to its 03:15 cron.
+   */
+  'billing/reconcile.now': {
+    data: {
+      reason?: string;
+    };
+  };
 };

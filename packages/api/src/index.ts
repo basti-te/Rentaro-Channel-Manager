@@ -71,6 +71,7 @@ export {
   TRIAL_DAYS,
   getStripe,
   isStripeConfigured,
+  verifyStripeWebhook,
   syncSubscriptionFromStripe,
   reconcileQuantity,
 } from './services/stripe';

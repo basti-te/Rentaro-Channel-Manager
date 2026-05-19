@@ -23,6 +23,8 @@ export interface AppContextEnv {
   APP_URL?: string;
   /** Stripe SaaS billing — all optional; billing degrades to "not configured" if unset. */
   STRIPE_SECRET_KEY?: string;
+  /** Webhook signing secret — used by the worker to verify `stripe-signature`. */
+  STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_BASE_MONTHLY?: string;
   STRIPE_PRICE_BASE_ANNUAL?: string;
   STRIPE_PRICE_PROPERTY_MONTHLY?: string;
