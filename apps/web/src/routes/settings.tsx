@@ -40,10 +40,28 @@ const TZ_FALLBACK = [
 ];
 const CUR_FALLBACK = ['EUR', 'USD', 'GBP', 'CHF'];
 
-/** Ensure the saved value is selectable even if Intl omits it. */
-function withCurrent(list: string[], current: string): string[] {
-  return list.includes(current) ? list : [current, ...list];
+/**
+ * Pin a preferred default (Berlin / EUR) to the top, keep the saved value
+ * selectable, then the full alphabetical list — deduplicated.
+ */
+function withPreferred(
+  list: string[],
+  preferred: string,
+  current: string,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of [preferred, current, ...list]) {
+    if (!seen.has(v)) {
+      seen.add(v);
+      out.push(v);
+    }
+  }
+  return out;
 }
+
+const DEFAULT_TZ = 'Europe/Berlin';
+const DEFAULT_CURRENCY = 'EUR';
 
 const currencyName = (() => {
   try {
@@ -150,11 +168,21 @@ function GeneralSection({
     (data.defaultCityTaxRateBp / 100).toString(),
   );
   const tzOptions = useMemo(
-    () => withCurrent(intlValues('timeZone', TZ_FALLBACK), data.defaultTimezone),
+    () =>
+      withPreferred(
+        intlValues('timeZone', TZ_FALLBACK),
+        DEFAULT_TZ,
+        data.defaultTimezone,
+      ),
     [data.defaultTimezone],
   );
   const curOptions = useMemo(
-    () => withCurrent(intlValues('currency', CUR_FALLBACK), data.defaultCurrency),
+    () =>
+      withPreferred(
+        intlValues('currency', CUR_FALLBACK),
+        DEFAULT_CURRENCY,
+        data.defaultCurrency,
+      ),
     [data.defaultCurrency],
   );
   const [ci, setCi] = useState(data.defaultCheckinTime);
