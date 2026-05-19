@@ -32,13 +32,12 @@ If install hangs, pause iCloud or move the repo to a non-iCloud path.
 **Recent commits (`git log --oneline -12`):**
 
 ```
+d07755b messages: automated trigger dispatch + delivery status (M3)
+c189a35 docs: status.md — per-tenant SMS sender (ADR 0008)
 9c5d829 messages: per-tenant SMS sender (account env as fallback)
-2cfef00 docs: status.md — message templates M2 + Twilio env
 5a84aee messages: template CRUD + SMS test-send (M2)
-7ea50b4 docs: status.md — Channex guest-inbox iframe (M1)
 22ef628 messages: embed Channex guest inbox via one-time-token iframe
 bd5fa89 docs: ADR 0007 — one room type + one rate plan per property
-18e6f21 docs: status.md handoff updated to Phase 8-9 (cert-ready)
 6017898 Phase 9d: calendar rate/restriction editor (live-review ready)
 92473d4 Phase 9c: per-tenant rateSource (pms | pricelabs)
 0e56c89 Phase 9b: per-day rate & restriction overrides
@@ -67,7 +66,7 @@ eec8ab1 Phase 9a: global ARI outbox + debounced/throttled flusher
 | 9d | Calendar rate/restriction editor (live-review ready) | ✅ |
 | M1 | Channex guest-inbox iframe (OTT-embedded) | ✅ |
 | M2 | Message templates CRUD + SMS test-send (Twilio) | ✅ |
-| M3 | Trigger scheduler + automated send (outbox + status) | ⬜ next |
+| M3 | Trigger scheduler + automated send + delivery status | ✅ |
 | — | Reinigung (cleaning module) | ⬜ planned |
 | — | Messaging Option B (own inbox + AI/KB auto-reply) | ⬜ planned (decided against for now — Option A iframe shipped) |
 | — | Settings page (tenant + property defaults editor) | ⬜ planned |
@@ -139,6 +138,7 @@ deliberately out of scope. Rationale + additive migration path in
 | Guest inbox (Messages) | `/messages` → tab **Inbox**: per-apartment selector + embedded Channex chat. `messages.iframeSession` mints a Channex one-time token server-side (API key never in browser) and returns the `/auth/exchange?...&redirect_to=/messages` URL; rendered in a sandboxed iframe. Needs the Channex **Messages app** installed on the property; threads only appear with a real messaging-capable OTA channel |
 | Message templates (M2) | `/messages` → tab **Vorlagen**: `messageTemplates` router (list/create/update/delete/vars/sendTest). Tenant-scoped, fixed channel per template (sms/airbnb/booking_com/email), trigger DSL string stored, `{{placeholder}}` body. Editor dialog with trigger presets + variable chips + preview/test. SMS test-send via dependency-free Twilio REST (`services/twilio.ts`); graceful "not configured" if `TWILIO_*` unset. **Triggers stored but not yet evaluated — automation is M3.** Real SMS verified live (sender "Information"/"LeopardsGmb"). |
 | Per-tenant SMS sender | `tenants.sms_sender_id`; effective sender = `tenant.sms_sender_id ?? env.TWILIO_FROM`. `settings.setSmsSenderId` (admin, validates ≤11/≥1 letter/[A-Za-z0-9 ]); empty clears to account default. UI: "SMS-Absender" card on Vorlagen tab. [ADR 0008](adr/0008-per-tenant-sms-sender.md). Per-property sender deferred. |
+| Automated dispatch (M3) | `messages-dispatch` Inngest cron (every 10 min): parses each active template's trigger (`booking_created`, `checkin/checkout:±Nd@HH:MM`, DST-correct via Intl + tenant tz), finds due (booking × template), atomically claims a `messages` row (unique `booking_id+template_id`, ON CONFLICT DO NOTHING), renders `{{vars}}` from the booking, sends per channel (SMS→Twilio, OTA→`channex.bookings.sendMessage`), walks status `queued→sent→delivered/failed`; stuck-`queued` retried. 2-day grace prevents backfill spam. Twilio `StatusCallback` → `/api/webhooks/twilio/:secret` advances delivered/failed (needs public URL — skipped in local dev). `messages.listByBooking` read endpoint. Trigger/DST math verified 9/9; full cron→SMS path is a paid live test. |
 | Property onboarding | Click "Verbinden" → creates Channex Property + Room Type + Rate Plan + DB mapping + initial ARI enqueue |
 | Mobile nav | Bottom tab bar Kalender / Nachrichten / Reinigung / Menü (last three are placeholders) |
 
@@ -152,7 +152,7 @@ channel-manager/
 │   ├── web/                    React 18 + Vite + Tailwind, TanStack Router + Query, tRPC client
 │   │   └── src/routes/calendar/   The hard UI; Calendar.tsx is the grid, NewBookingDialog, BookingDetailSheet
 │   └── worker/                 Hono on :3001 — tRPC + Inngest serve + Channex webhook receiver
-│       └── src/inngest/        client, events.ts, functions/ (ari-flush, ari-resolve, ingest-bookings, channex-booking-mapper)
+│       └── src/inngest/        client, events.ts, functions/ (ari-flush, ari-resolve, ingest-bookings, channex-booking-mapper, messages-dispatch); webhooks/ (channex, twilio)
 ├── packages/
 │   ├── db/                     Drizzle schema (incl. ari_pending, rate_overrides, tenants.rate_source), migrations 0001–0007, post-migrate SQL (RLS + realtime), scripts/
 │   ├── api/                    tRPC routers: me, propertyGroups, properties, bookings, sync, rates, settings, messages, messageTemplates; services/ (ari, twilio, templates, onboarding); AppContext + AppEvents
@@ -396,6 +396,8 @@ once during dev; consider rotating again before any deployment.
 | `CHANNEX_WEBHOOK_SECRET` | 48-char random string, put into Channex webhook URL |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | Twilio Console → Account Info (optional; SMS test/automation) |
 | `TWILIO_FROM` | Twilio number (E.164) or approved alphanumeric sender id |
+| `TWILIO_STATUS_SECRET` | Path secret for `/api/webhooks/twilio/:secret` (optional) |
+| `PUBLIC_WEBHOOK_BASE_URL` | Public base URL for inbound webhooks; unset in dev → Twilio status callback skipped |
 | `VITE_SUPABASE_*` | Browser-side duplicates of SUPABASE_* (anon key only) |
 
 ---
