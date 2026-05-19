@@ -32,6 +32,7 @@ If install hangs, pause iCloud or move the repo to a non-iCloud path.
 **Recent commits (`git log --oneline -12`):**
 
 ```
+a603605 settings: build Settings page (Allgemein + Preise + SMS)
 97e6c9c messages: custom variables UI — Variablen tab (stage C)
 dfce021 messages: custom variables — schema + API + render (stages A+B)
 628b7c4 messages M4 stage 3: per-booking override toggle in booking detail
@@ -46,7 +47,6 @@ c189a35 docs: status.md — per-tenant SMS sender (ADR 0008)
 bd5fa89 docs: ADR 0007 — one room type + one rate plan per property
 6017898 Phase 9d: calendar rate/restriction editor (live-review ready)
 92473d4 Phase 9c: per-tenant rateSource (pms | pricelabs)
-0e56c89 Phase 9b: per-day rate & restriction overrides
 ```
 
 ## Phase status
@@ -72,7 +72,7 @@ bd5fa89 docs: ADR 0007 — one room type + one rate plan per property
 | M3 | Trigger scheduler + automated send + delivery status | ✅ |
 | — | Reinigung (cleaning module) | ⬜ planned |
 | — | Messaging Option B (own inbox + AI/KB auto-reply) | ⬜ planned (decided against for now — Option A iframe shipped) |
-| — | Settings page (tenant + property defaults editor) | ⬜ planned |
+| Set | Settings page (Allgemein + Preise + SMS) | ✅ |
 | — | Stripe billing | ⬜ deferred to SaaS launch |
 | — | Self-service onboarding | ⬜ deferred |
 | — | Reviews automation | ⬜ planned (data model already in place) |
@@ -140,7 +140,8 @@ deliberately out of scope. Rationale + additive migration path in
 | Calendar rate editor | "Buchungen \| Preise" mode toggle. In Preise mode a drag/click range opens `RateEditorDialog` (price, min-stay, stop-sell, clear). Free cells show effective per-day rate (override-aware, stop-sell flagged) |
 | Guest inbox (Messages) | `/messages` → tab **Inbox**: per-apartment selector + embedded Channex chat. `messages.iframeSession` mints a Channex one-time token server-side (API key never in browser) and returns the `/auth/exchange?...&redirect_to=/messages` URL; rendered in a sandboxed iframe. Needs the Channex **Messages app** installed on the property; threads only appear with a real messaging-capable OTA channel |
 | Message templates (M2) | `/messages` → tab **Vorlagen**: `messageTemplates` router (list/create/update/delete/vars/sendTest). Tenant-scoped, fixed channel per template (sms/airbnb/booking_com/email), trigger DSL string stored, `{{placeholder}}` body. Editor dialog with trigger presets + variable chips + preview/test. SMS test-send via dependency-free Twilio REST (`services/twilio.ts`); graceful "not configured" if `TWILIO_*` unset. **Triggers stored but not yet evaluated — automation is M3.** Real SMS verified live (sender "Information"/"LeopardsGmb"). |
-| Per-tenant SMS sender | `tenants.sms_sender_id`; effective sender = `tenant.sms_sender_id ?? env.TWILIO_FROM`. `settings.setSmsSenderId` (admin, validates ≤11/≥1 letter/[A-Za-z0-9 ]); empty clears to account default. UI: "SMS-Absender" card on Vorlagen tab. [ADR 0008](adr/0008-per-tenant-sms-sender.md). Per-property sender deferred. |
+| Per-tenant SMS sender | `tenants.sms_sender_id`; effective sender = `tenant.sms_sender_id ?? env.TWILIO_FROM`. `settings.setSmsSenderId` (admin, validates ≤11/≥1 letter/[A-Za-z0-9 ]); empty clears to account default. UI: SMS-Absender section on the **Settings page** (moved off the Vorlagen tab). [ADR 0008](adr/0008-per-tenant-sms-sender.md). Per-property sender deferred. |
+| Settings page | `/settings` (nav enabled). Sections: **Allgemein** (`settings.updateTenant` admin — name, timezone, currency, city-tax stored bp/shown %, check-in/-out times), **Preis-Quelle** (segmented `setRateSource` — first UI), **SMS-Absender** (`setSmsSenderId`). Non-admins read-only notice. **Verified live:** form prefilled, City-Tax 5→7.5 % saved + persists. |
 | Automated dispatch (M3) | `messages-dispatch` Inngest cron (every 10 min): parses each active template's trigger (`booking_created`, `checkin/checkout:±Nd@HH:MM`, DST-correct via Intl + tenant tz), finds due (booking × template), atomically claims a `messages` row (unique `booking_id+template_id`, ON CONFLICT DO NOTHING), renders `{{vars}}` from the booking, sends per channel (SMS→Twilio, OTA→`channex.bookings.sendMessage`), walks status `queued→sent→delivered/failed`; stuck-`queued` retried. 2-day grace prevents backfill spam. Twilio `StatusCallback` → `/api/webhooks/twilio/:secret` advances delivered/failed (needs public URL — skipped in local dev). `messages.listByBooking` + `messages.timelineForBooking` (merges projected template schedule with real rows). Manual `messages/dispatch.now` trigger alongside the cron. Booking detail sheet shows a hierarchical **Nachrichten** section. **Verified live:** real Twilio send (SID); trigger/DST math 9/9. |
 | Automation builder (M4) | **Apartment scope (explicit allow-list)** via `message_template_listings` — a template reaches nobody until apartments are assigned; **per-booking override** via `message_booking_overrides` (force on/off; resolution = override ?? in-scope, shared `isTemplateEnabledForBooking`). DSL gains a `reservation` anchor (`reservation:±Nd@HH:MM`, booking-creation date in tenant tz; legacy `booking_created` still parsed; offsets capped 90d). Template editor: structured trigger builder (Ereignis → Relation per anchor → Tage 1–90 → Uhrzeit, listing-local) + Apartments checkbox allow-list. Booking detail: per-template Switch + "Deaktiviert" group + "auf Apartment-Standard" reset. Dispatch + timeline both honor scope+override. **Verified live (3 stages):** trigger/scope 11/11; builder round-trips `checkin:-1d@18:00`; Whg 0 assignment persists; Whg 8 out-of-scope booking toggled on → Geplant + override, persists. [ADR 0008-style decision: explicit list + both override layers.] |
 | Custom variables | Tenant-defined `{{placeholders}}` (`message_variables` key/label, unique per tenant, no built-in collision) filled **per apartment** (`message_variable_values`). `resolveCustomVars(tenant, property)` merges into dispatch + timeline render; unset apartment → `{{key}}` stays literal (chosen fallback). `messageVariables` router (list/create/update/delete/setValue); `messageTemplates.vars` returns built-in + custom for editor chips. UI: third **Variablen** tab (create + per-apartment value editor) + custom chip in the template editor. **Verified live:** `{{wifiCode}}` created, Whg 0 filled (1/16, persists), chip shows in editor. |
