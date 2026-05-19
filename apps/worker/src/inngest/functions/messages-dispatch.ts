@@ -302,7 +302,7 @@ async function sendOne(
 
 export const messagesDispatch = inngest.createFunction(
   { id: 'messages-dispatch', name: 'Dispatch automated guest messages', retries: 2 },
-  { cron: '*/10 * * * *' },
+  [{ cron: '*/10 * * * *' }, { event: 'messages/dispatch.now' }],
   async ({ step, logger }) => {
     const res = await step.run('dispatch', dispatch);
     if (res.claimed > 0 || res.retried > 0) {

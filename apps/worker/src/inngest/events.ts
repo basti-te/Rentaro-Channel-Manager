@@ -48,4 +48,14 @@ export type Events = {
       hintBookingId?: string;
     };
   };
+
+  /**
+   * Run the automated message dispatch immediately, in addition to its
+   * 10-minute cron. Useful for ops ("send due messages now") and testing.
+   */
+  'messages/dispatch.now': {
+    data: {
+      reason?: string;
+    };
+  };
 };
