@@ -263,8 +263,6 @@ function TemplatesView() {
         </Button>
       </div>
 
-      <SmsSenderConfig />
-
       {listQ.isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
@@ -342,98 +340,6 @@ function TemplatesView() {
         />
       )}
     </div>
-  );
-}
-
-function SmsSenderConfig() {
-  const utils = trpc.useUtils();
-  const tenantQ = trpc.settings.tenant.useQuery();
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState('');
-
-  const save = trpc.settings.setSmsSenderId.useMutation({
-    onSuccess: () => {
-      toast.success('SMS-Absender gespeichert');
-      utils.settings.tenant.invalidate();
-      setEditing(false);
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const current = tenantQ.data?.smsSenderId ?? null;
-
-  return (
-    <Card className="px-4 py-3 mb-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex-1 min-w-[220px]">
-          <div className="text-[12px] uppercase tracking-wider text-muted font-medium">
-            SMS-Absender
-          </div>
-          {!editing ? (
-            <div className="text-[14px] text-ink mt-0.5">
-              {current ? (
-                <span className="font-medium">{current}</span>
-              ) : (
-                <span className="text-muted italic">
-                  Standard (Konto-Vorgabe)
-                </span>
-              )}
-              <span className="text-[12px] text-muted ml-2">
-                — gilt für alle SMS dieses Workspaces
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 mt-1.5">
-              <Input
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="z. B. Information (≤11, Buchstaben/Ziffern)"
-                maxLength={11}
-                className="max-w-[260px]"
-                autoFocus
-              />
-              <Button
-                size="sm"
-                variant="brand"
-                loading={save.isPending}
-                onClick={() => save.mutate({ smsSenderId: value.trim() })}
-              >
-                Speichern
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setEditing(false)}
-              >
-                Abbrechen
-              </Button>
-              {current && (
-                <button
-                  type="button"
-                  className="text-[12px] text-muted hover:text-negative"
-                  onClick={() => save.mutate({ smsSenderId: '' })}
-                >
-                  Auf Standard zurücksetzen
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-        {!editing && (
-          <Button
-            size="sm"
-            variant="secondary"
-            iconLeft={<Pencil className="h-3.5 w-3.5" />}
-            onClick={() => {
-              setValue(current ?? '');
-              setEditing(true);
-            }}
-          >
-            Ändern
-          </Button>
-        )}
-      </div>
-    </Card>
   );
 }
 

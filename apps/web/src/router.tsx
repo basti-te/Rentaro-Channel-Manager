@@ -14,6 +14,7 @@ import { CalendarPage } from './routes/calendar';
 import { MessagesPage } from './routes/messages';
 import { CleaningPage } from './routes/cleaning';
 import { MenuPage } from './routes/menu';
+import { SettingsPage } from './routes/settings';
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -71,6 +72,12 @@ const menuRoute = createRoute({
   component: MenuPage,
 });
 
+const settingsRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/settings',
+  component: SettingsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   dashboardRoute.addChildren([
@@ -80,6 +87,7 @@ const routeTree = rootRoute.addChildren([
     messagesRoute,
     cleaningRoute,
     menuRoute,
+    settingsRoute,
   ]),
 ]);
 

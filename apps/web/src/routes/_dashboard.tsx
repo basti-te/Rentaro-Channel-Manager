@@ -34,7 +34,7 @@ const NAV: NavItem[] = [
   { to: '/',           label: 'Overview',   icon: LayoutGrid },
   { to: '/messages',   label: 'Messages',   icon: MessageSquare },
   { to: '/cleaning',   label: 'Cleaning',   icon: SprayCan },
-  { to: '/settings',   label: 'Settings',   icon: Settings, badge: 'soon', disabled: true },
+  { to: '/settings',   label: 'Settings',   icon: Settings },
 ];
 
 export function DashboardLayout() {

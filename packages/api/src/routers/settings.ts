@@ -28,6 +28,9 @@ export const settingsRouter = router({
           smsSenderId: tenants.smsSenderId,
           defaultCurrency: tenants.defaultCurrency,
           defaultTimezone: tenants.defaultTimezone,
+          defaultCityTaxRateBp: tenants.defaultCityTaxRateBp,
+          defaultCheckinTime: tenants.defaultCheckinTime,
+          defaultCheckoutTime: tenants.defaultCheckoutTime,
         })
         .from(tenants)
         .where(eq(tenants.id, ctx.tenantId!))
@@ -36,6 +39,35 @@ export const settingsRouter = router({
     if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
     return row;
   }),
+
+  /** Edit workspace defaults (admin). City tax is stored in basis points. */
+  updateTenant: adminProcedure
+    .input(
+      z.object({
+        name: z.string().trim().min(1).max(80),
+        defaultTimezone: z.string().trim().min(1).max(64),
+        defaultCurrency: z
+          .string()
+          .trim()
+          .regex(/^[A-Z]{3}$/, 'ISO-4217-Code, z. B. EUR'),
+        defaultCityTaxRateBp: z.number().int().min(0).max(10_000),
+        defaultCheckinTime: z
+          .string()
+          .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Format HH:MM'),
+        defaultCheckoutTime: z
+          .string()
+          .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Format HH:MM'),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await ctx.db
+        .update(tenants)
+        .set({ ...input, updatedAt: new Date() })
+        .where(eq(tenants.id, ctx.tenantId!))
+        .returning({ id: tenants.id });
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
+      return { ok: true };
+    }),
 
   setRateSource: adminProcedure
     .input(z.object({ rateSource: z.enum(['pms', 'pricelabs']) }))

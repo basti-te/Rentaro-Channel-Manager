@@ -1,0 +1,378 @@
+import { useEffect, useState, type FormEvent } from 'react';
+import { toast } from 'sonner';
+import type { inferRouterOutputs } from '@trpc/server';
+import type { AppRouter } from '@cm/api';
+import { cn } from '@cm/ui';
+
+type TenantData = inferRouterOutputs<AppRouter>['settings']['tenant'];
+
+import { PageHeader } from './_dashboard';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Label } from '../components/ui/Label';
+import { Card } from '../components/ui/Card';
+import { Skeleton } from '../components/ui/Skeleton';
+import { trpc } from '../lib/trpc';
+
+export function SettingsPage() {
+  const utils = trpc.useUtils();
+  const meQ = trpc.me.current.useQuery();
+  const tenantQ = trpc.settings.tenant.useQuery();
+
+  const role = meQ.data?.memberships?.[0]?.role;
+  const isAdmin = role === 'owner' || role === 'admin';
+
+  return (
+    <>
+      <PageHeader
+        title="Einstellungen"
+        subtitle="Workspace-Standards, Preis-Quelle und SMS-Absender."
+      />
+      <div className="px-4 sm:px-6 md:px-8 py-6 max-w-3xl space-y-5">
+        {!isAdmin && meQ.data && (
+          <Card className="px-4 py-3 bg-warning-soft/40 border-warning/30">
+            <p className="text-[12.5px] text-ink-soft">
+              Nur Owner/Admin können Einstellungen ändern — du kannst sie
+              ansehen.
+            </p>
+          </Card>
+        )}
+
+        {tenantQ.isLoading || !tenantQ.data ? (
+          <>
+            <Skeleton className="h-48 w-full rounded-xl" />
+            <Skeleton className="h-32 w-full rounded-xl" />
+          </>
+        ) : (
+          <>
+            <GeneralSection
+              data={tenantQ.data}
+              disabled={!isAdmin}
+              onSaved={() => utils.settings.tenant.invalidate()}
+            />
+            <RateSourceSection
+              value={tenantQ.data.rateSource}
+              disabled={!isAdmin}
+              onSaved={() => utils.settings.tenant.invalidate()}
+            />
+            <SmsSenderSection
+              value={tenantQ.data.smsSenderId}
+              disabled={!isAdmin}
+              onSaved={() => utils.settings.tenant.invalidate()}
+            />
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+function SectionCard({
+  title,
+  desc,
+  children,
+}: {
+  title: string;
+  desc?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="px-5 py-4">
+      <div className="mb-3">
+        <h2 className="display text-[16px] font-medium text-ink">{title}</h2>
+        {desc && <p className="text-[12.5px] text-muted mt-0.5">{desc}</p>}
+      </div>
+      {children}
+    </Card>
+  );
+}
+
+function GeneralSection({
+  data,
+  disabled,
+  onSaved,
+}: {
+  data: TenantData;
+  disabled: boolean;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(data.name);
+  const [tz, setTz] = useState(data.defaultTimezone);
+  const [currency, setCurrency] = useState(data.defaultCurrency);
+  const [taxPct, setTaxPct] = useState(
+    (data.defaultCityTaxRateBp / 100).toString(),
+  );
+  const [ci, setCi] = useState(data.defaultCheckinTime);
+  const [co, setCo] = useState(data.defaultCheckoutTime);
+
+  // Re-seed if the query refetches with new values.
+  useEffect(() => {
+    setName(data.name);
+    setTz(data.defaultTimezone);
+    setCurrency(data.defaultCurrency);
+    setTaxPct((data.defaultCityTaxRateBp / 100).toString());
+    setCi(data.defaultCheckinTime);
+    setCo(data.defaultCheckoutTime);
+  }, [data]);
+
+  const save = trpc.settings.updateTenant.useMutation({
+    onSuccess: () => {
+      toast.success('Einstellungen gespeichert');
+      onSaved();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const pctNum = Number(taxPct.replace(',', '.'));
+  const pctValid = Number.isFinite(pctNum) && pctNum >= 0 && pctNum <= 100;
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    if (disabled || !pctValid) return;
+    save.mutate({
+      name: name.trim(),
+      defaultTimezone: tz.trim(),
+      defaultCurrency: currency.trim().toUpperCase(),
+      defaultCityTaxRateBp: Math.round(pctNum * 100),
+      defaultCheckinTime: ci,
+      defaultCheckoutTime: co,
+    });
+  }
+
+  return (
+    <SectionCard
+      title="Allgemein"
+      desc="Standardwerte für neue Buchungen und Anzeige."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="s-name">Workspace-Name</Label>
+          <Input
+            id="s-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={disabled}
+            required
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="s-tz">Zeitzone</Label>
+            <Input
+              id="s-tz"
+              value={tz}
+              onChange={(e) => setTz(e.target.value)}
+              placeholder="Europe/Berlin"
+              disabled={disabled}
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-cur">Währung</Label>
+            <Input
+              id="s-cur"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              placeholder="EUR"
+              maxLength={3}
+              className="uppercase"
+              disabled={disabled}
+              required
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="s-tax">City-Tax (%)</Label>
+            <Input
+              id="s-tax"
+              inputMode="decimal"
+              value={taxPct}
+              onChange={(e) => setTaxPct(e.target.value)}
+              disabled={disabled}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-ci">Check-in</Label>
+            <Input
+              id="s-ci"
+              type="time"
+              value={ci}
+              onChange={(e) => setCi(e.target.value)}
+              disabled={disabled}
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="s-co">Check-out</Label>
+            <Input
+              id="s-co"
+              type="time"
+              value={co}
+              onChange={(e) => setCo(e.target.value)}
+              disabled={disabled}
+              required
+            />
+          </div>
+        </div>
+        {!pctValid && (
+          <p className="text-[12px] text-negative">
+            City-Tax muss zwischen 0 und 100 % liegen.
+          </p>
+        )}
+        <div className="flex justify-end">
+          <Button
+            type="submit"
+            variant="brand"
+            size="sm"
+            loading={save.isPending}
+            disabled={disabled || !pctValid}
+          >
+            Speichern
+          </Button>
+        </div>
+      </form>
+    </SectionCard>
+  );
+}
+
+function RateSourceSection({
+  value,
+  disabled,
+  onSaved,
+}: {
+  value: 'pms' | 'pricelabs';
+  disabled: boolean;
+  onSaved: () => void;
+}) {
+  const save = trpc.settings.setRateSource.useMutation({
+    onSuccess: (r) => {
+      toast.success(
+        r.changed
+          ? `Rate-Quelle: ${r.rateSource} — ${r.properties ?? 0} Apartment(s) neu synchronisiert`
+          : 'Unverändert',
+      );
+      onSaved();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <SectionCard
+      title="Preis-Quelle"
+      desc="Wer setzt die Nachtpreise in Channex? PMS = wir pushen; PriceLabs = PriceLabs schreibt direkt (wir pushen nur Restriktionen)."
+    >
+      <div
+        className="inline-flex rounded-lg border border-line bg-surface p-0.5"
+        role="tablist"
+        aria-label="Preis-Quelle"
+      >
+        {(['pms', 'pricelabs'] as const).map((opt) => (
+          <button
+            key={opt}
+            type="button"
+            disabled={disabled || save.isPending}
+            aria-selected={value === opt}
+            onClick={() => value !== opt && save.mutate({ rateSource: opt })}
+            className={cn(
+              'px-3.5 py-1.5 rounded-[7px] text-[13px] font-medium transition-colors',
+              value === opt
+                ? 'bg-brand text-white shadow-sm'
+                : 'text-muted hover:text-ink hover:bg-sunken',
+              disabled && 'opacity-60 cursor-not-allowed',
+            )}
+          >
+            {opt === 'pms' ? 'PMS (wir pushen)' : 'PriceLabs'}
+          </button>
+        ))}
+      </div>
+      <p className="text-[11.5px] text-whisper mt-2">
+        Beim Umschalten werden Raten/Restriktionen für alle verbundenen
+        Apartments über ~180 Tage neu an Channex gemeldet.
+      </p>
+    </SectionCard>
+  );
+}
+
+function SmsSenderSection({
+  value,
+  disabled,
+  onSaved,
+}: {
+  value: string | null;
+  disabled: boolean;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [v, setV] = useState('');
+
+  const save = trpc.settings.setSmsSenderId.useMutation({
+    onSuccess: () => {
+      toast.success('SMS-Absender gespeichert');
+      onSaved();
+      setEditing(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <SectionCard
+      title="SMS-Absender"
+      desc="Alphanumerischer Absender für ausgehende SMS dieses Workspaces (≤11 Zeichen, ≥1 Buchstabe). Leer = Konto-Standard."
+    >
+      {!editing ? (
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-[14px] text-ink">
+            {value ? (
+              <span className="font-medium">{value}</span>
+            ) : (
+              <span className="text-muted italic">Standard (Konto-Vorgabe)</span>
+            )}
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={disabled}
+            onClick={() => {
+              setV(value ?? '');
+              setEditing(true);
+            }}
+          >
+            Ändern
+          </Button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Input
+            value={v}
+            onChange={(e) => setV(e.target.value)}
+            placeholder="z. B. Information"
+            maxLength={11}
+            className="max-w-[260px]"
+            autoFocus
+          />
+          <Button
+            size="sm"
+            variant="brand"
+            loading={save.isPending}
+            onClick={() => save.mutate({ smsSenderId: v.trim() })}
+          >
+            Speichern
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+            Abbrechen
+          </Button>
+          {value && (
+            <button
+              type="button"
+              className="text-[12px] text-muted hover:text-negative"
+              onClick={() => save.mutate({ smsSenderId: '' })}
+            >
+              Auf Standard zurücksetzen
+            </button>
+          )}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
