@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, desc, eq } from 'drizzle-orm';
-import { messageTemplates } from '@cm/db';
+import { messageTemplates, tenants } from '@cm/db';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
 import { renderTemplate, SAMPLE_VARS, TEMPLATE_VARS } from '../services/templates';
 import { sendSms } from '../services/twilio';
@@ -133,11 +133,21 @@ export const messageTemplatesRouter = router({
         });
       }
 
+      // Per-tenant sender wins; fall back to the account-wide env default.
+      const tenantRow = (
+        await ctx.db
+          .select({ smsSenderId: tenants.smsSenderId })
+          .from(tenants)
+          .where(eq(tenants.id, ctx.tenantId!))
+          .limit(1)
+      )[0];
+      const from = tenantRow?.smsSenderId || ctx.env.TWILIO_FROM;
+
       const result = await sendSms(
         {
           accountSid: ctx.env.TWILIO_ACCOUNT_SID,
           authToken: ctx.env.TWILIO_AUTH_TOKEN,
-          from: ctx.env.TWILIO_FROM,
+          from,
         },
         input.toPhone,
         preview,

@@ -150,6 +150,13 @@ export const tenants = pgTable('tenants', {
    */
   rateSource: rateSourceEnum('rate_source').notNull().default('pms'),
 
+  /**
+   * Per-tenant alphanumeric SMS sender id (Twilio `From`). NULL → fall back
+   * to the account-wide `TWILIO_FROM` env default. Constraints: ≤11 chars,
+   * ≥1 letter, only A–Z a–z 0–9 and spaces (validated in the API).
+   */
+  smsSenderId: text('sms_sender_id'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

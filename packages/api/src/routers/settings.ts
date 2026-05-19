@@ -25,6 +25,7 @@ export const settingsRouter = router({
           id: tenants.id,
           name: tenants.name,
           rateSource: tenants.rateSource,
+          smsSenderId: tenants.smsSenderId,
           defaultCurrency: tenants.defaultCurrency,
           defaultTimezone: tenants.defaultTimezone,
         })
@@ -94,5 +95,35 @@ export const settingsRouter = router({
       }
 
       return { rateSource: input.rateSource, changed: true, properties: connected.length };
+    }),
+
+  /**
+   * Set (or clear) this tenant's alphanumeric SMS sender id. Empty string
+   * clears it → the account-wide TWILIO_FROM default is used again.
+   * Twilio rule: ≤11 chars, ≥1 letter, only A–Z a–z 0–9 and spaces.
+   */
+  setSmsSenderId: adminProcedure
+    .input(
+      z.object({
+        smsSenderId: z
+          .string()
+          .trim()
+          .max(11, 'Maximal 11 Zeichen')
+          .regex(
+            /^(?=.*[A-Za-z])[A-Za-z0-9 ]+$/,
+            'Nur Buchstaben, Ziffern und Leerzeichen; mindestens ein Buchstabe.',
+          )
+          .or(z.literal('')),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const value = input.smsSenderId === '' ? null : input.smsSenderId;
+      const [row] = await ctx.db
+        .update(tenants)
+        .set({ smsSenderId: value, updatedAt: new Date() })
+        .where(eq(tenants.id, ctx.tenantId!))
+        .returning({ smsSenderId: tenants.smsSenderId });
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
+      return { smsSenderId: row.smsSenderId };
     }),
 });

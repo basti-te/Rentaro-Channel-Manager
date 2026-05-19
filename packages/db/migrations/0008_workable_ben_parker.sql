@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "sms_sender_id" text;
