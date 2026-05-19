@@ -667,6 +667,200 @@ export const messageVariableValues = pgTable(
 export type MessageVariableValue = typeof messageVariableValues.$inferSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Reinigung (cleaning) — automated reminders to internal teammates
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Mirrors the messaging automation, but the recipient is an internal
+// Teammate (cleaner) instead of the guest. A cleaning_rule has a trigger
+// (same DSL as message_templates: reservation/checkin/checkout:±Nd@HH:MM),
+// an explicit apartment allow-list, one or more teammates, and an optional
+// reusable checklist rendered into the body via {{checklist}}.
+//
+// cleaning_messages reuses `messageStatusEnum` (identical queued→sent→
+// delivered/failed lifecycle) — no separate enum needed.
+
+/** Internal teammate (cleaner) — SMS recipient for cleaning rules. */
+export const teammates = pgTable(
+  'teammates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** E.164 phone for SMS (loose-validated in the API, Twilio is authoritative). */
+    phone: text('phone').notNull(),
+    active: boolean('active').notNull().default(true),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byTenant: index('teammates_tenant_idx').on(t.tenantId),
+  }),
+);
+export type Teammate = typeof teammates.$inferSelect;
+
+/** A reusable named checklist a cleaning rule can attach (rendered via {{checklist}}). */
+export const cleaningChecklists = pgTable(
+  'cleaning_checklists',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byTenant: index('cleaning_checklists_tenant_idx').on(t.tenantId),
+  }),
+);
+export type CleaningChecklist = typeof cleaningChecklists.$inferSelect;
+
+/** Ordered items of a checklist. */
+export const cleaningChecklistItems = pgTable(
+  'cleaning_checklist_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    checklistId: uuid('checklist_id')
+      .notNull()
+      .references(() => cleaningChecklists.id, { onDelete: 'cascade' }),
+    /** Display order within the checklist (0-based). */
+    position: integer('position').notNull().default(0),
+    label: text('label').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byChecklist: index('cleaning_checklist_items_checklist_idx').on(t.checklistId),
+    byTenant: index('cleaning_checklist_items_tenant_idx').on(t.tenantId),
+  }),
+);
+export type CleaningChecklistItem = typeof cleaningChecklistItems.$inferSelect;
+
+/**
+ * A cleaning reminder rule. Trigger DSL is shared with message_templates
+ * (see services/triggers.ts). Reaches nobody until apartments are assigned
+ * (cleaning_rule_listings) AND at least one teammate is attached
+ * (cleaning_rule_teammates) — same explicit-allow-list model as messaging.
+ */
+export const cleaningRules = pgTable(
+  'cleaning_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Trigger DSL: reservation|checkin|checkout:±Nd@HH:MM (property-local). */
+    trigger: text('trigger').notNull(),
+    /** SMS body with {{placeholders}} incl. cleaning-specific + {{checklist}}. */
+    body: text('body').notNull(),
+    /** Optional attached checklist (rendered into the body via {{checklist}}). */
+    checklistId: uuid('checklist_id').references(() => cleaningChecklists.id, {
+      onDelete: 'set null',
+    }),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byTenant: index('cleaning_rules_tenant_idx').on(t.tenantId),
+  }),
+);
+export type CleaningRule = typeof cleaningRules.$inferSelect;
+
+/** Apartment scope for a cleaning rule (explicit allow-list). */
+export const cleaningRuleListings = pgTable(
+  'cleaning_rule_listings',
+  {
+    ruleId: uuid('rule_id')
+      .notNull()
+      .references(() => cleaningRules.id, { onDelete: 'cascade' }),
+    propertyId: uuid('property_id')
+      .notNull()
+      .references(() => properties.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.ruleId, t.propertyId] }),
+    byProperty: index('crl_property_idx').on(t.propertyId),
+  }),
+);
+export type CleaningRuleListing = typeof cleaningRuleListings.$inferSelect;
+
+/** Teammates a cleaning rule notifies (fan-out: one rule → N teammates). */
+export const cleaningRuleTeammates = pgTable(
+  'cleaning_rule_teammates',
+  {
+    ruleId: uuid('rule_id')
+      .notNull()
+      .references(() => cleaningRules.id, { onDelete: 'cascade' }),
+    teammateId: uuid('teammate_id')
+      .notNull()
+      .references(() => teammates.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.ruleId, t.teammateId] }),
+    byTeammate: index('crt_teammate_idx').on(t.teammateId),
+  }),
+);
+export type CleaningRuleTeammate = typeof cleaningRuleTeammates.$inferSelect;
+
+/**
+ * A dispatched (or due) cleaning SMS. Dedupe is the unique index on
+ * (rule_id, booking_id, teammate_id) — each rule fires at most once per
+ * booking per teammate, regardless of cron overlap. The dispatch cron
+ * relies on this via ON CONFLICT DO NOTHING.
+ */
+export const cleaningMessages = pgTable(
+  'cleaning_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    ruleId: uuid('rule_id').references(() => cleaningRules.id, {
+      onDelete: 'set null',
+    }),
+    bookingId: uuid('booking_id').references(() => bookings.id, {
+      onDelete: 'cascade',
+    }),
+    teammateId: uuid('teammate_id').references(() => teammates.id, {
+      onDelete: 'set null',
+    }),
+    body: text('body').notNull(),
+    toAddress: text('to_address'), // teammate phone snapshot
+    fromAddress: text('from_address'),
+    status: messageStatusEnum('status').notNull().default('scheduled'),
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    externalId: text('external_id'), // Twilio Message SID
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byBooking: index('cleaning_messages_booking_idx').on(t.bookingId),
+    byScheduled: index('cleaning_messages_scheduled_idx').on(
+      t.status,
+      t.scheduledAt,
+    ),
+    byTenant: index('cleaning_messages_tenant_idx').on(t.tenantId),
+    byExternal: index('cleaning_messages_external_idx').on(t.externalId),
+    dedupe: uniqueIndex('cleaning_messages_rule_booking_teammate_uq').on(
+      t.ruleId,
+      t.bookingId,
+      t.teammateId,
+    ),
+  }),
+);
+export type CleaningMessage = typeof cleaningMessages.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Reviews (Phase 11)
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -71,6 +71,11 @@ ALTER TABLE public.review_templates      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reviews               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_log             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.webhook_deliveries    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teammates                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cleaning_checklists       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cleaning_checklist_items  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cleaning_rules            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cleaning_messages         ENABLE ROW LEVEL SECURITY;
 
 -- ─── SELECT policies ─────────────────────────────────────────────────────────
 -- Idempotent pattern: DROP IF EXISTS, then CREATE.
@@ -138,6 +143,26 @@ DROP POLICY IF EXISTS webhook_deliveries_tenant_select ON public.webhook_deliver
 CREATE POLICY webhook_deliveries_tenant_select ON public.webhook_deliveries
   FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
 
+DROP POLICY IF EXISTS teammates_tenant_select ON public.teammates;
+CREATE POLICY teammates_tenant_select ON public.teammates
+  FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
+
+DROP POLICY IF EXISTS cleaning_checklists_tenant_select ON public.cleaning_checklists;
+CREATE POLICY cleaning_checklists_tenant_select ON public.cleaning_checklists
+  FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
+
+DROP POLICY IF EXISTS cleaning_checklist_items_tenant_select ON public.cleaning_checklist_items;
+CREATE POLICY cleaning_checklist_items_tenant_select ON public.cleaning_checklist_items
+  FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
+
+DROP POLICY IF EXISTS cleaning_rules_tenant_select ON public.cleaning_rules;
+CREATE POLICY cleaning_rules_tenant_select ON public.cleaning_rules
+  FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
+
+DROP POLICY IF EXISTS cleaning_messages_tenant_select ON public.cleaning_messages;
+CREATE POLICY cleaning_messages_tenant_select ON public.cleaning_messages
+  FOR SELECT USING (tenant_id IN (SELECT public.current_user_tenant_ids()));
+
 -- ─── Trigger helper: keep updated_at fresh ──────────────────────────────────
 CREATE OR REPLACE FUNCTION public.touch_updated_at()
 RETURNS TRIGGER
@@ -157,7 +182,8 @@ BEGIN
   FOR t IN
     SELECT unnest(ARRAY[
       'tenants', 'subscriptions', 'channex_properties', 'properties',
-      'bookings', 'message_templates'
+      'bookings', 'message_templates',
+      'teammates', 'cleaning_checklists', 'cleaning_rules'
     ])
   LOOP
     EXECUTE format(

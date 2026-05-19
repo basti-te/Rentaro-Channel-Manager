@@ -14,7 +14,8 @@ DECLARE
 BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'sync_jobs',
-    'bookings'  -- prep for future inbound webhook → calendar live-updates
+    'bookings',  -- prep for future inbound webhook → calendar live-updates
+    'cleaning_messages'  -- live cleaning-reminder status on the Reinigung page
   ])
   LOOP
     IF NOT EXISTS (
