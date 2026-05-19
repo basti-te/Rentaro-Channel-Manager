@@ -41,6 +41,16 @@ const Env = z.object({
     .transform((v) => v || undefined)
     .pipe(z.string().url().optional()),
   INNGEST_APP_ID: z.string().optional().transform((v) => v || undefined),
+
+  // Stripe SaaS billing — all optional; billing degrades to "not configured" if unset.
+  STRIPE_SECRET_KEY: z.string().optional().transform((v) => v || undefined),
+  /** Stripe Webhook signing secret. Server-side webhook verification only. */
+  STRIPE_WEBHOOK_SECRET: z.string().optional().transform((v) => v || undefined),
+  /** The 4 Stripe Price IDs for the hybrid base + per-property × monthly/annual model. */
+  STRIPE_PRICE_BASE_MONTHLY: z.string().optional().transform((v) => v || undefined),
+  STRIPE_PRICE_BASE_ANNUAL: z.string().optional().transform((v) => v || undefined),
+  STRIPE_PRICE_PROPERTY_MONTHLY: z.string().optional().transform((v) => v || undefined),
+  STRIPE_PRICE_PROPERTY_ANNUAL: z.string().optional().transform((v) => v || undefined),
 });
 
 const parsed = Env.safeParse(process.env);

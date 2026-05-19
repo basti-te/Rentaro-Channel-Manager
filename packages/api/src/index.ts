@@ -12,6 +12,7 @@ import { messageVariablesRouter } from './routers/message-variables';
 import { teammatesRouter } from './routers/teammates';
 import { cleaningChecklistsRouter } from './routers/cleaning-checklists';
 import { cleaningRulesRouter } from './routers/cleaning-rules';
+import { billingRouter } from './routers/billing';
 
 export const appRouter = router({
   me: meRouter,
@@ -27,6 +28,7 @@ export const appRouter = router({
   teammates: teammatesRouter,
   cleaningChecklists: cleaningChecklistsRouter,
   cleaningRules: cleaningRulesRouter,
+  billing: billingRouter,
 });
 
 export type AppRouter = typeof appRouter;
@@ -63,3 +65,13 @@ export {
   type CleaningBookingSource,
   type NextReservation,
 } from './services/cleaning';
+
+// Shared Stripe helpers — reused by the worker's webhook + reconcile cron.
+export {
+  TRIAL_DAYS,
+  getStripe,
+  isStripeConfigured,
+  syncSubscriptionFromStripe,
+  reconcileQuantity,
+} from './services/stripe';
+export { resolveAccess } from './services/plan-guard';

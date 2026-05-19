@@ -19,6 +19,14 @@ export interface AppContextEnv {
   INNGEST_EVENT_KEY?: string;
   INNGEST_BASE_URL?: string;
   INNGEST_APP_ID?: string;
+  /** Public URL of the SPA — used for Stripe Checkout/Portal return URLs. */
+  APP_URL?: string;
+  /** Stripe SaaS billing — all optional; billing degrades to "not configured" if unset. */
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_PRICE_BASE_MONTHLY?: string;
+  STRIPE_PRICE_BASE_ANNUAL?: string;
+  STRIPE_PRICE_PROPERTY_MONTHLY?: string;
+  STRIPE_PRICE_PROPERTY_ANNUAL?: string;
 }
 
 /**

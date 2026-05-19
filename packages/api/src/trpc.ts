@@ -83,15 +83,45 @@ const requireRole = (allowed: Array<NonNullable<AppContext['role']>>) =>
     return next({ ctx });
   });
 
+/**
+ * Plan-gate middleware: blocks mutating endpoints when the tenant's
+ * subscription is not active or trialing. Billing-exempt tenants pass
+ * straight through. Reads (tenantProcedure) are NOT gated so a locked-out
+ * tenant can still load `/settings/billing` and pay.
+ */
+import { assertActiveSubscription } from './services/plan-guard';
+
+const planGuardMiddleware = middleware(async ({ ctx, next }) => {
+  if (!ctx.tenantId) throw new TRPCError({ code: 'UNAUTHORIZED' });
+  await assertActiveSubscription(ctx.db, ctx.tenantId);
+  return next({ ctx });
+});
+
 /** Authed but tenant-agnostic — for onboarding, account, "me" endpoints. */
 export const authedProcedure = publicProcedure.use(authMiddleware);
 
-/** Authed AND scoped to a tenant. Most procedures use this. */
+/** Authed AND scoped to a tenant. Most procedures use this. Read-only — NOT plan-gated. */
 export const tenantProcedure = authedProcedure.use(tenantMiddleware);
 
-/** Tenant-scoped + role-gated. */
-export const ownerProcedure = tenantProcedure.use(requireRole(['owner']));
-export const adminProcedure = tenantProcedure.use(requireRole(['owner', 'admin']));
-export const editorProcedure = tenantProcedure.use(
-  requireRole(['owner', 'admin', 'manager']),
+/**
+ * Tenant-scoped + role-gated + **plan-gated** (the lockout). All mutating
+ * procedures inherit the SUBSCRIPTION_REQUIRED check via these.
+ */
+export const ownerProcedure = tenantProcedure
+  .use(requireRole(['owner']))
+  .use(planGuardMiddleware);
+export const adminProcedure = tenantProcedure
+  .use(requireRole(['owner', 'admin']))
+  .use(planGuardMiddleware);
+export const editorProcedure = tenantProcedure
+  .use(requireRole(['owner', 'admin', 'manager']))
+  .use(planGuardMiddleware);
+
+/**
+ * Escape hatch for the billing router only — admin-scoped but NOT
+ * plan-gated, otherwise a locked-out tenant could never start checkout to
+ * pay and unlock themselves.
+ */
+export const billingProcedure = tenantProcedure.use(
+  requireRole(['owner', 'admin']),
 );

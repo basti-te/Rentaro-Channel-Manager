@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import type { Database } from '@cm/db';
-import { memberships, tenants } from '@cm/db';
+import { memberships, subscriptions, tenants } from '@cm/db';
+import { TRIAL_DAYS } from './stripe';
 
 interface OnboardInput {
   userId: string;
@@ -36,6 +37,19 @@ export async function onboardNewUser(db: Database, input: OnboardInput) {
     tenantId: tenant!.id,
     userId: input.userId,
     role: 'owner',
+  });
+
+  // Start the local 14-day trial. No Stripe subscription yet — that's
+  // created when the user picks a plan in /settings/billing. The plan
+  // guard reads this row; new tenants pass the gate via status='trialing'
+  // until trialEndsAt elapses.
+  const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 86_400_000);
+  await db.insert(subscriptions).values({
+    tenantId: tenant!.id,
+    plan: 'free',
+    status: 'trialing',
+    quantity: 1,
+    trialEndsAt,
   });
 
   return { tenantId: tenant!.id, role: 'owner' as const, created: true };
