@@ -12,25 +12,31 @@
  * tenant timezone (DST-correct via Intl, no date lib needed).
  */
 
+export type TriggerAnchor = 'reservation' | 'checkin' | 'checkout';
+
 export interface ParsedTrigger {
   kind: 'booking_created' | 'anchored';
-  anchor?: 'checkin' | 'checkout';
+  anchor?: TriggerAnchor;
   dayOffset?: number; // signed, e.g. -1, 0, 2
   hour?: number;
   minute?: number;
 }
 
-const ANCHORED_RE = /^(checkin|checkout):([+-]?\d{1,3})d@([01]\d|2[0-3]):([0-5]\d)$/;
+const ANCHORED_RE =
+  /^(reservation|checkin|checkout):([+-]?\d{1,3})d@([01]\d|2[0-3]):([0-5]\d)$/;
 
 export function parseTrigger(raw: string): ParsedTrigger | null {
   const s = raw.trim();
+  // Legacy: bare "booking_created" fires at the exact creation instant.
   if (s === 'booking_created') return { kind: 'booking_created' };
   const m = ANCHORED_RE.exec(s);
   if (!m) return null;
+  const dayOffset = Number(m[2]);
+  if (Math.abs(dayOffset) > 90) return null; // builder caps at 1–90 days
   return {
     kind: 'anchored',
-    anchor: m[1] as 'checkin' | 'checkout',
-    dayOffset: Number(m[2]),
+    anchor: m[1] as TriggerAnchor,
+    dayOffset,
     hour: Number(m[3]),
     minute: Number(m[4]),
   };
@@ -95,6 +101,21 @@ function shiftYmd(ymd: string, days: number) {
   return { year: t.getUTCFullYear(), month1: t.getUTCMonth() + 1, day: t.getUTCDate() };
 }
 
+/** Calendar date (YYYY-MM-DD) of a UTC instant *in* the given timezone. */
+function utcToZonedYmd(at: Date, timeZone: string): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts(at)
+      .map((x) => [x.type, x.value]),
+  ) as Record<string, string>;
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
 export interface DueContext {
   /** YYYY-MM-DD */
   checkin: string;
@@ -114,7 +135,12 @@ export function computeDueAt(trigger: string, ctx: DueContext): Date | null {
   if (!p) return null;
   if (p.kind === 'booking_created') return ctx.createdAt;
 
-  const base = p.anchor === 'checkout' ? ctx.checkout : ctx.checkin;
+  const base =
+    p.anchor === 'reservation'
+      ? utcToZonedYmd(ctx.createdAt, ctx.timeZone)
+      : p.anchor === 'checkout'
+        ? ctx.checkout
+        : ctx.checkin;
   const { year, month1, day } = shiftYmd(base, p.dayOffset!);
   return zonedWallTimeToUtc(year, month1, day, p.hour!, p.minute!, ctx.timeZone);
 }

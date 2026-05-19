@@ -35,5 +35,11 @@ export {
   type TemplateVars,
   type BookingVarSource,
 } from './services/templates';
-export { computeDueAt, parseTrigger, type ParsedTrigger } from './services/triggers';
+export {
+  computeDueAt,
+  parseTrigger,
+  type ParsedTrigger,
+  type TriggerAnchor,
+} from './services/triggers';
 export { sendSms, isTwilioConfigured, type TwilioConfig } from './services/twilio';
+export { isTemplateEnabledForBooking } from './services/scope';

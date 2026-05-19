@@ -573,6 +573,53 @@ export const messages = pgTable(
   }),
 );
 
+/**
+ * Apartment scope for a template (explicit allow-list). A template only
+ * dispatches for bookings whose property is listed here — no rows = the
+ * template is inactive for everyone until apartments are assigned.
+ */
+export const messageTemplateListings = pgTable(
+  'message_template_listings',
+  {
+    templateId: uuid('template_id')
+      .notNull()
+      .references(() => messageTemplates.id, { onDelete: 'cascade' }),
+    propertyId: uuid('property_id')
+      .notNull()
+      .references(() => properties.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.templateId, t.propertyId] }),
+    byProperty: index('mtl_property_idx').on(t.propertyId),
+  }),
+);
+export type MessageTemplateListing = typeof messageTemplateListings.$inferSelect;
+
+/**
+ * Per-booking override of a template's apartment scope. `enabled=true`
+ * forces the template on for this booking even if its property isn't in
+ * the listing scope; `enabled=false` forces it off even if it is.
+ * Absence → fall back to the apartment scope.
+ */
+export const messageBookingOverrides = pgTable(
+  'message_booking_overrides',
+  {
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'cascade' }),
+    templateId: uuid('template_id')
+      .notNull()
+      .references(() => messageTemplates.id, { onDelete: 'cascade' }),
+    enabled: boolean('enabled').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.bookingId, t.templateId] }),
+    byBooking: index('mbo_booking_idx').on(t.bookingId),
+  }),
+);
+export type MessageBookingOverride = typeof messageBookingOverrides.$inferSelect;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Reviews (Phase 11)
 // ─────────────────────────────────────────────────────────────────────────────

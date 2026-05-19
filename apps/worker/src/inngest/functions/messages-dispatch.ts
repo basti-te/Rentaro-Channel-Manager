@@ -18,12 +18,20 @@ import {
   bookings,
   createDb,
   messages,
+  messageBookingOverrides,
+  messageTemplateListings,
   messageTemplates,
   properties,
   tenants,
 } from '@cm/db';
 import { createChannexClient, ChannexError } from '@cm/channex';
-import { buildBookingVars, renderTemplate, computeDueAt, sendSms } from '@cm/api';
+import {
+  buildBookingVars,
+  renderTemplate,
+  computeDueAt,
+  sendSms,
+  isTemplateEnabledForBooking,
+} from '@cm/api';
 import { env } from '../../env';
 import { inngest } from '../client';
 
@@ -79,7 +87,6 @@ async function dispatch(): Promise<DispatchResult> {
   let failed = 0;
 
   // Bounded booking window shared across templates of a tenant.
-  const today = now.toISOString().slice(0, 10);
   const horizon = new Date(now.getTime() + 60 * 86_400_000)
     .toISOString()
     .slice(0, 10);
@@ -90,10 +97,34 @@ async function dispatch(): Promise<DispatchResult> {
   for (const t of tpls) {
     if (claimed >= MAX_PER_RUN) break;
 
+    // Apartment scope (explicit allow-list) + per-booking overrides.
+    const scoped = new Set(
+      (
+        await db
+          .select({ pid: messageTemplateListings.propertyId })
+          .from(messageTemplateListings)
+          .where(eq(messageTemplateListings.templateId, t.id))
+      ).map((r) => r.pid),
+    );
+    const ovMap = new Map(
+      (
+        await db
+          .select({
+            bookingId: messageBookingOverrides.bookingId,
+            enabled: messageBookingOverrides.enabled,
+          })
+          .from(messageBookingOverrides)
+          .where(eq(messageBookingOverrides.templateId, t.id))
+      ).map((r) => [r.bookingId, r.enabled]),
+    );
+    // Nothing to do for this template if it reaches nobody.
+    if (scoped.size === 0 && ovMap.size === 0) continue;
+
     const candidates = await db
       .select({
         id: bookings.id,
         tenantId: bookings.tenantId,
+        propertyId: bookings.propertyId,
         guestName: bookings.guestName,
         guestPhone: bookings.guestPhone,
         checkin: bookings.checkin,
@@ -119,6 +150,14 @@ async function dispatch(): Promise<DispatchResult> {
 
     for (const b of candidates) {
       if (claimed >= MAX_PER_RUN) break;
+      if (
+        !isTemplateEnabledForBooking({
+          propertyId: b.propertyId,
+          scopedPropertyIds: scoped,
+          override: ovMap.get(b.id),
+        })
+      )
+        continue;
       const dueAt = computeDueAt(t.trigger, {
         checkin: b.checkin,
         checkout: b.checkout,

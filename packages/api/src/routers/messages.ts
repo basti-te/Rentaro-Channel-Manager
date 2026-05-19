@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   bookings,
   channexProperties,
   messages,
+  messageBookingOverrides,
+  messageTemplateListings,
   messageTemplates,
   properties,
   tenants,
@@ -13,6 +15,7 @@ import { createChannexClient, ChannexError } from '@cm/channex';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
 import { computeDueAt } from '../services/triggers';
 import { buildBookingVars, renderTemplate } from '../services/templates';
+import { isTemplateEnabledForBooking } from '../services/scope';
 
 /**
  * Channex iframe path for the guest-messaging screen. The mapping iframe
@@ -175,16 +178,55 @@ export const messagesRouter = router({
         rows.filter((r) => r.templateId).map((r) => [r.templateId!, r]),
       );
 
+      // Effective scope for THIS booking: which templates include this
+      // property, plus any per-booking overrides.
+      const tplIds = tpls.map((t) => t.id);
+      const inScope = new Set(
+        tplIds.length === 0
+          ? []
+          : (
+              await ctx.db
+                .select({ templateId: messageTemplateListings.templateId })
+                .from(messageTemplateListings)
+                .where(
+                  and(
+                    eq(messageTemplateListings.propertyId, bk.propertyId),
+                    inArray(messageTemplateListings.templateId, tplIds),
+                  ),
+                )
+            ).map((r) => r.templateId),
+      );
+      const overrideByTpl = new Map(
+        (
+          await ctx.db
+            .select({
+              templateId: messageBookingOverrides.templateId,
+              enabled: messageBookingOverrides.enabled,
+            })
+            .from(messageBookingOverrides)
+            .where(eq(messageBookingOverrides.bookingId, input.bookingId))
+        ).map((r) => [r.templateId, r.enabled]),
+      );
+
       const items: MessageTimelineItem[] = [];
 
       for (const t of tpls) {
+        const enabled = isTemplateEnabledForBooking({
+          propertyId: bk.propertyId,
+          scopedPropertyIds: inScope.has(t.id)
+            ? new Set([bk.propertyId])
+            : new Set(),
+          override: overrideByTpl.get(t.id),
+        });
+        const row = rowByTpl.get(t.id);
+        // Don't project a message that won't send; keep real rows as history.
+        if (!enabled && !row) continue;
         const due = computeDueAt(t.trigger, {
           checkin: bk.checkin,
           checkout: bk.checkout,
           createdAt: bk.createdAt,
           timeZone: tz,
         });
-        const row = rowByTpl.get(t.id);
         if (row) {
           items.push({
             key: `tpl-${t.id}`,
