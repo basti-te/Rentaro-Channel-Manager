@@ -1,9 +1,18 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, desc, eq } from 'drizzle-orm';
-import { channexProperties, messages, properties } from '@cm/db';
+import {
+  bookings,
+  channexProperties,
+  messages,
+  messageTemplates,
+  properties,
+  tenants,
+} from '@cm/db';
 import { createChannexClient, ChannexError } from '@cm/channex';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
+import { computeDueAt } from '../services/triggers';
+import { buildBookingVars, renderTemplate } from '../services/templates';
 
 /**
  * Channex iframe path for the guest-messaging screen. The mapping iframe
@@ -12,6 +21,26 @@ import { router, tenantProcedure, editorProcedure } from '../trpc';
  * "Messages app" installed on the property).
  */
 const CHANNEX_MESSAGES_PATH = '/messages';
+
+/** One row in a booking's message timeline (sent rows + projected sends). */
+export interface MessageTimelineItem {
+  key: string;
+  title: string;
+  channel: string;
+  trigger: string | null;
+  status:
+    | 'planned'
+    | 'pending'
+    | 'queued'
+    | 'sending'
+    | 'sent'
+    | 'delivered'
+    | 'failed';
+  /** ISO — sent time, or the projected due time for not-yet-sent items. */
+  at: string | null;
+  body: string;
+  error: string | null;
+}
 
 export const messagesRouter = router({
   /** Automated/sent messages for a booking (status timeline for the UI). */
@@ -39,6 +68,165 @@ export const messagesRouter = router({
           ),
         )
         .orderBy(desc(messages.createdAt));
+    }),
+
+  /**
+   * Per-booking message timeline: merges the projected schedule of every
+   * active template (computed from its trigger) with the rows that already
+   * exist in `messages`. Lets the booking detail show, at a glance, what
+   * was sent and what is still planned.
+   *
+   * Items:
+   *   - active template with no row yet → status `planned` (future) or
+   *     `pending` (due, next cron will send), preview rendered from booking
+   *   - active template with a row     → the row's real status/timestamps
+   *   - row without a matching active template (manual / deleted template)
+   *     → standalone history item
+   */
+  timelineForBooking: tenantProcedure
+    .input(z.object({ bookingId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const bk = (
+        await ctx.db
+          .select({
+            id: bookings.id,
+            tenantId: bookings.tenantId,
+            propertyId: bookings.propertyId,
+            guestName: bookings.guestName,
+            checkin: bookings.checkin,
+            checkout: bookings.checkout,
+            checkinTime: bookings.checkinTime,
+            checkoutTime: bookings.checkoutTime,
+            guestCount: bookings.guestCount,
+            otaConfirmationCode: bookings.otaConfirmationCode,
+            createdAt: bookings.createdAt,
+            propertyName: properties.name,
+          })
+          .from(bookings)
+          .innerJoin(properties, eq(properties.id, bookings.propertyId))
+          .where(
+            and(
+              eq(bookings.id, input.bookingId),
+              eq(bookings.tenantId, ctx.tenantId!),
+            ),
+          )
+          .limit(1)
+      )[0];
+      if (!bk) throw new TRPCError({ code: 'NOT_FOUND' });
+
+      const tz =
+        (
+          await ctx.db
+            .select({ tz: tenants.defaultTimezone })
+            .from(tenants)
+            .where(eq(tenants.id, ctx.tenantId!))
+            .limit(1)
+        )[0]?.tz ?? 'Europe/Berlin';
+
+      const tpls = await ctx.db
+        .select({
+          id: messageTemplates.id,
+          name: messageTemplates.name,
+          channel: messageTemplates.channel,
+          trigger: messageTemplates.trigger,
+          body: messageTemplates.body,
+        })
+        .from(messageTemplates)
+        .where(
+          and(
+            eq(messageTemplates.tenantId, ctx.tenantId!),
+            eq(messageTemplates.active, true),
+          ),
+        );
+
+      const rows = await ctx.db
+        .select({
+          id: messages.id,
+          templateId: messages.templateId,
+          channel: messages.channel,
+          body: messages.body,
+          status: messages.status,
+          scheduledAt: messages.scheduledAt,
+          sentAt: messages.sentAt,
+          deliveredAt: messages.deliveredAt,
+          error: messages.error,
+          createdAt: messages.createdAt,
+        })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.tenantId, ctx.tenantId!),
+            eq(messages.bookingId, input.bookingId),
+          ),
+        );
+
+      const vars = buildBookingVars({
+        guestName: bk.guestName,
+        checkin: bk.checkin,
+        checkout: bk.checkout,
+        checkinTime: bk.checkinTime,
+        checkoutTime: bk.checkoutTime,
+        guestCount: bk.guestCount,
+        otaConfirmationCode: bk.otaConfirmationCode,
+        propertyName: bk.propertyName,
+      });
+      const now = Date.now();
+      const rowByTpl = new Map(
+        rows.filter((r) => r.templateId).map((r) => [r.templateId!, r]),
+      );
+
+      const items: MessageTimelineItem[] = [];
+
+      for (const t of tpls) {
+        const due = computeDueAt(t.trigger, {
+          checkin: bk.checkin,
+          checkout: bk.checkout,
+          createdAt: bk.createdAt,
+          timeZone: tz,
+        });
+        const row = rowByTpl.get(t.id);
+        if (row) {
+          items.push({
+            key: `tpl-${t.id}`,
+            title: t.name,
+            channel: row.channel,
+            trigger: t.trigger,
+            status: row.status as MessageTimelineItem['status'],
+            at: (row.sentAt ?? row.scheduledAt ?? null)?.toISOString() ?? null,
+            body: row.body,
+            error: row.error,
+          });
+        } else {
+          items.push({
+            key: `tpl-${t.id}`,
+            title: t.name,
+            channel: t.channel,
+            trigger: t.trigger,
+            status: due && due.getTime() > now ? 'planned' : 'pending',
+            at: due ? due.toISOString() : null,
+            body: renderTemplate(t.body, vars),
+            error: null,
+          });
+        }
+      }
+
+      // Rows with no active template (manual or deleted-template history).
+      for (const r of rows) {
+        if (r.templateId && tpls.some((t) => t.id === r.templateId)) continue;
+        items.push({
+          key: `msg-${r.id}`,
+          title: r.templateId ? 'Vorlage (entfernt)' : 'Manuell',
+          channel: r.channel,
+          trigger: null,
+          status: r.status as MessageTimelineItem['status'],
+          at: (r.sentAt ?? r.scheduledAt ?? r.createdAt)?.toISOString() ?? null,
+          body: r.body,
+          error: r.error,
+        });
+      }
+
+      items.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''));
+      return items;
     }),
 
   /**

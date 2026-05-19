@@ -6,6 +6,7 @@ import {
   Calendar as CalIcon,
   Clock,
   Mail,
+  MessageSquare,
   Pencil,
   Phone,
   Star,
@@ -330,6 +331,11 @@ export function BookingDetailSheet({
             </Section>
           )}
 
+          {/* Message timeline (guest bookings only) */}
+          {booking.source !== 'block' && (
+            <MessagesSection bookingId={booking.id} />
+          )}
+
           {/* Auto-review status (guest bookings only) */}
           {booking.source !== 'block' && booking.autoReviewEnabled != null && (
             <Section label="Automatisierung">
@@ -422,6 +428,110 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+const MSG_CHANNEL_LABEL: Record<string, string> = {
+  sms: 'SMS',
+  airbnb: 'Airbnb',
+  booking_com: 'Booking.com',
+  email: 'E-Mail',
+};
+
+const MSG_STATUS_META: Record<
+  string,
+  { label: string; group: 'sent' | 'planned' | 'failed'; cls: string }
+> = {
+  delivered: { label: 'Zugestellt', group: 'sent', cls: 'text-positive' },
+  sent: { label: 'Gesendet', group: 'sent', cls: 'text-positive' },
+  sending: { label: 'Wird gesendet', group: 'planned', cls: 'text-warning' },
+  queued: { label: 'In Warteschlange', group: 'planned', cls: 'text-warning' },
+  pending: { label: 'Fällig', group: 'planned', cls: 'text-warning' },
+  planned: { label: 'Geplant', group: 'planned', cls: 'text-muted' },
+  failed: { label: 'Fehlgeschlagen', group: 'failed', cls: 'text-danger' },
+};
+
+const MSG_GROUP_ORDER: Array<{ key: 'sent' | 'planned' | 'failed'; label: string }> = [
+  { key: 'planned', label: 'Geplant' },
+  { key: 'sent', label: 'Gesendet' },
+  { key: 'failed', label: 'Fehlgeschlagen' },
+];
+
+function MessagesSection({ bookingId }: { bookingId: string }) {
+  const q = trpc.messages.timelineForBooking.useQuery({ bookingId });
+
+  return (
+    <Section icon={<MessageSquare className="h-4 w-4" />} label="Nachrichten">
+      {q.isLoading ? (
+        <div className="text-[12.5px] text-muted">Lädt…</div>
+      ) : !q.data || q.data.length === 0 ? (
+        <p className="text-[12.5px] text-muted">
+          Keine automatischen Nachrichten für diese Buchung.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {MSG_GROUP_ORDER.map(({ key, label }) => {
+            const group = q.data!.filter(
+              (i) => (MSG_STATUS_META[i.status]?.group ?? 'planned') === key,
+            );
+            if (group.length === 0) return null;
+            return (
+              <div key={key}>
+                <div className="text-[10px] uppercase tracking-widest text-whisper mb-1.5">
+                  {label}
+                </div>
+                <ul className="space-y-1.5">
+                  {group.map((i) => {
+                    const meta =
+                      MSG_STATUS_META[i.status] ?? MSG_STATUS_META.planned!;
+                    const when = i.at
+                      ? format(new Date(i.at), 'd. MMM, HH:mm', { locale: de })
+                      : null;
+                    return (
+                      <li
+                        key={i.key}
+                        className="rounded-md border border-line bg-canvas/60 px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] font-medium text-ink truncate flex-1">
+                            {i.title}
+                          </span>
+                          <span className="text-[10px] uppercase tracking-wider text-muted">
+                            {MSG_CHANNEL_LABEL[i.channel] ?? i.channel}
+                          </span>
+                          <span
+                            className={cn(
+                              'text-[11px] font-medium flex-shrink-0',
+                              meta.cls,
+                            )}
+                          >
+                            {meta.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted">
+                          {i.trigger && <span className="num">{i.trigger}</span>}
+                          {when && (
+                            <span>
+                              {meta.group === 'sent' ? '· ' : '· '}
+                              {when}
+                            </span>
+                          )}
+                        </div>
+                        {i.error && (
+                          <div className="text-[11px] text-danger mt-1 num">
+                            {i.error}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Section>
   );
 }
 
