@@ -32,6 +32,8 @@ If install hangs, pause iCloud or move the repo to a non-iCloud path.
 **Recent commits (`git log --oneline -12`):**
 
 ```
+9c5d829 messages: per-tenant SMS sender (account env as fallback)
+2cfef00 docs: status.md — message templates M2 + Twilio env
 5a84aee messages: template CRUD + SMS test-send (M2)
 7ea50b4 docs: status.md — Channex guest-inbox iframe (M1)
 22ef628 messages: embed Channex guest inbox via one-time-token iframe
@@ -43,7 +45,6 @@ bd5fa89 docs: ADR 0007 — one room type + one rate plan per property
 eec8ab1 Phase 9a: global ARI outbox + debounced/throttled flusher
 51628f6 Phase 8: sandbox booking simulator + inbound pipeline fix
 7236433 Phase 7: one-click property onboarding to Channex
-e0331cb Phase 6: inbound Channex webhook + booking-feed ingest
 ```
 
 ## Phase status
@@ -136,7 +137,8 @@ deliberately out of scope. Rationale + additive migration path in
 | Sandbox booking simulator | Apartments page (dev-only, CRS-capable properties): `bookings.simulateChannexBooking` mints an OTA booking via Channex CRS API then triggers ingest. Only shown where Channex has a CRS app connected (`bookings.crsCapableProperties`) |
 | Calendar rate editor | "Buchungen \| Preise" mode toggle. In Preise mode a drag/click range opens `RateEditorDialog` (price, min-stay, stop-sell, clear). Free cells show effective per-day rate (override-aware, stop-sell flagged) |
 | Guest inbox (Messages) | `/messages` → tab **Inbox**: per-apartment selector + embedded Channex chat. `messages.iframeSession` mints a Channex one-time token server-side (API key never in browser) and returns the `/auth/exchange?...&redirect_to=/messages` URL; rendered in a sandboxed iframe. Needs the Channex **Messages app** installed on the property; threads only appear with a real messaging-capable OTA channel |
-| Message templates (M2) | `/messages` → tab **Vorlagen**: `messageTemplates` router (list/create/update/delete/vars/sendTest). Tenant-scoped, fixed channel per template (sms/airbnb/booking_com/email), trigger DSL string stored, `{{placeholder}}` body. Editor dialog with trigger presets + variable chips + preview/test. SMS test-send via dependency-free Twilio REST (`services/twilio.ts`); graceful "not configured" if `TWILIO_*` unset. **Triggers stored but not yet evaluated — automation is M3.** |
+| Message templates (M2) | `/messages` → tab **Vorlagen**: `messageTemplates` router (list/create/update/delete/vars/sendTest). Tenant-scoped, fixed channel per template (sms/airbnb/booking_com/email), trigger DSL string stored, `{{placeholder}}` body. Editor dialog with trigger presets + variable chips + preview/test. SMS test-send via dependency-free Twilio REST (`services/twilio.ts`); graceful "not configured" if `TWILIO_*` unset. **Triggers stored but not yet evaluated — automation is M3.** Real SMS verified live (sender "Information"/"LeopardsGmb"). |
+| Per-tenant SMS sender | `tenants.sms_sender_id`; effective sender = `tenant.sms_sender_id ?? env.TWILIO_FROM`. `settings.setSmsSenderId` (admin, validates ≤11/≥1 letter/[A-Za-z0-9 ]); empty clears to account default. UI: "SMS-Absender" card on Vorlagen tab. [ADR 0008](adr/0008-per-tenant-sms-sender.md). Per-property sender deferred. |
 | Property onboarding | Click "Verbinden" → creates Channex Property + Room Type + Rate Plan + DB mapping + initial ARI enqueue |
 | Mobile nav | Bottom tab bar Kalender / Nachrichten / Reinigung / Menü (last three are placeholders) |
 
@@ -162,7 +164,7 @@ channel-manager/
     ├── status.md               THIS FILE
     ├── setup.md                first-time setup guide
     ├── channex-webhook-setup.md  registering the global webhook in production
-    └── adr/                    0001–0007 architecture decisions
+    └── adr/                    0001–0008 architecture decisions
 ```
 
 ### Sync data flow (end-to-end, verified against sandbox)
