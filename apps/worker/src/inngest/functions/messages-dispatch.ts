@@ -31,6 +31,7 @@ import {
   computeDueAt,
   sendSms,
   isTemplateEnabledForBooking,
+  resolveCustomVars,
 } from '@cm/api';
 import { env } from '../../env';
 import { inngest } from '../client';
@@ -61,6 +62,8 @@ type SendOutcome =
 async function dispatch(): Promise<DispatchResult> {
   const db = createDb(env.DATABASE_URL);
   const now = new Date();
+  // Custom variable values are per-apartment — cache per property per run.
+  const customVarCache = new Map<string, Record<string, string>>();
 
   const channex = createChannexClient({
     baseUrl: env.CHANNEX_API_URL,
@@ -168,19 +171,25 @@ async function dispatch(): Promise<DispatchResult> {
       if (dueAt > now) continue; // not yet
       if (dueAt.getTime() < now.getTime() - GRACE_MS) continue; // too old
 
-      const renderedBody = renderTemplate(
-        t.body,
-        buildBookingVars({
-          guestName: b.guestName,
-          checkin: b.checkin,
-          checkout: b.checkout,
-          checkinTime: b.checkinTime,
-          checkoutTime: b.checkoutTime,
-          guestCount: b.guestCount,
-          otaConfirmationCode: b.otaConfirmationCode,
-          propertyName: b.propertyName,
-        }),
-      );
+      const baseVars = buildBookingVars({
+        guestName: b.guestName,
+        checkin: b.checkin,
+        checkout: b.checkout,
+        checkinTime: b.checkinTime,
+        checkoutTime: b.checkoutTime,
+        guestCount: b.guestCount,
+        otaConfirmationCode: b.otaConfirmationCode,
+        propertyName: b.propertyName,
+      });
+      let custom = customVarCache.get(b.propertyId);
+      if (!custom) {
+        custom = await resolveCustomVars(db, t.tenantId, b.propertyId);
+        customVarCache.set(b.propertyId, custom);
+      }
+      const renderedBody = renderTemplate(t.body, {
+        ...baseVars,
+        ...custom,
+      });
 
       // Atomic claim — unique (booking_id, template_id) gates duplicates.
       const inserted = await db

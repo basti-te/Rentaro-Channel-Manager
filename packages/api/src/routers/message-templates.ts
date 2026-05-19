@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import {
   messageTemplateListings,
   messageTemplates,
+  messageVariables,
   properties,
   tenants,
 } from '@cm/db';
@@ -63,8 +64,21 @@ const phone = z
   .regex(/^\+[1-9]\d{6,14}$/, 'Erwartet wird eine Nummer im Format +49170…');
 
 export const messageTemplatesRouter = router({
-  /** Placeholder catalog for the editor's insert hints. */
-  vars: tenantProcedure.query(() => TEMPLATE_VARS),
+  /** Placeholder catalog (built-in + tenant custom) for editor chips. */
+  vars: tenantProcedure.query(async ({ ctx }) => {
+    const custom = await ctx.db
+      .select({
+        key: messageVariables.key,
+        label: messageVariables.label,
+      })
+      .from(messageVariables)
+      .where(eq(messageVariables.tenantId, ctx.tenantId!))
+      .orderBy(asc(messageVariables.key));
+    return [
+      ...TEMPLATE_VARS.map((v) => ({ ...v, custom: false })),
+      ...custom.map((v) => ({ ...v, custom: true })),
+    ];
+  }),
 
   list: tenantProcedure.query(async ({ ctx }) => {
     const tpls = await ctx.db

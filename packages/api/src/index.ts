@@ -8,6 +8,7 @@ import { ratesRouter } from './routers/rates';
 import { settingsRouter } from './routers/settings';
 import { messagesRouter } from './routers/messages';
 import { messageTemplatesRouter } from './routers/message-templates';
+import { messageVariablesRouter } from './routers/message-variables';
 
 export const appRouter = router({
   me: meRouter,
@@ -19,6 +20,7 @@ export const appRouter = router({
   settings: settingsRouter,
   messages: messagesRouter,
   messageTemplates: messageTemplatesRouter,
+  messageVariables: messageVariablesRouter,
 });
 
 export type AppRouter = typeof appRouter;
@@ -43,3 +45,4 @@ export {
 } from './services/triggers';
 export { sendSms, isTwilioConfigured, type TwilioConfig } from './services/twilio';
 export { isTemplateEnabledForBooking } from './services/scope';
+export { resolveCustomVars, CUSTOM_VAR_KEY_RE } from './services/custom-vars';

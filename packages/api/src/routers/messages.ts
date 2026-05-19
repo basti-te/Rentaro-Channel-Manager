@@ -16,6 +16,7 @@ import { router, tenantProcedure, editorProcedure } from '../trpc';
 import { computeDueAt } from '../services/triggers';
 import { buildBookingVars, renderTemplate } from '../services/templates';
 import { isTemplateEnabledForBooking } from '../services/scope';
+import { resolveCustomVars } from '../services/custom-vars';
 
 /**
  * Channex iframe path for the guest-messaging screen. The mapping iframe
@@ -180,6 +181,11 @@ export const messagesRouter = router({
         otaConfirmationCode: bk.otaConfirmationCode,
         propertyName: bk.propertyName,
       });
+      // Tenant custom variables filled for this booking's apartment.
+      Object.assign(
+        vars,
+        await resolveCustomVars(ctx.db, ctx.tenantId!, bk.propertyId),
+      );
       const now = Date.now();
       const rowByTpl = new Map(
         rows.filter((r) => r.templateId).map((r) => [r.templateId!, r]),

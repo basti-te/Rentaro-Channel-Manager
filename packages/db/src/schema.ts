@@ -620,6 +620,52 @@ export const messageBookingOverrides = pgTable(
 );
 export type MessageBookingOverride = typeof messageBookingOverrides.$inferSelect;
 
+/**
+ * Tenant-defined custom message variables (e.g. wifiCode, doorCode). The
+ * `key` is the {{placeholder}} token; values are filled per apartment in
+ * message_variable_values. No per-apartment value → the {{key}} stays
+ * literal in the rendered message (chosen fallback).
+ */
+export const messageVariables = pgTable(
+  'message_variables',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    /** Placeholder token: ^[a-z][a-zA-Z0-9_]*$, unique per tenant. */
+    key: text('key').notNull(),
+    label: text('label').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byTenant: index('message_variables_tenant_idx').on(t.tenantId),
+    uniqKey: uniqueIndex('message_variables_tenant_key_uq').on(t.tenantId, t.key),
+  }),
+);
+export type MessageVariable = typeof messageVariables.$inferSelect;
+
+/** Per-apartment value for a custom message variable. */
+export const messageVariableValues = pgTable(
+  'message_variable_values',
+  {
+    variableId: uuid('variable_id')
+      .notNull()
+      .references(() => messageVariables.id, { onDelete: 'cascade' }),
+    propertyId: uuid('property_id')
+      .notNull()
+      .references(() => properties.id, { onDelete: 'cascade' }),
+    value: text('value').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.variableId, t.propertyId] }),
+    byProperty: index('mvv_property_idx').on(t.propertyId),
+  }),
+);
+export type MessageVariableValue = typeof messageVariableValues.$inferSelect;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Reviews (Phase 11)
 // ─────────────────────────────────────────────────────────────────────────────
