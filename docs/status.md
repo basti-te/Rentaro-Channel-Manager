@@ -284,32 +284,47 @@ Booking in Airbnb (or any connected OTA) — sandbox: simulator mints it
 
 ## Open items / next priorities
 
-### High-value, channel-independent (good to build next)
+### Done since the original handoff (do NOT rebuild)
 
-- **Settings page** (1–2 days). Backend partly exists: `settings.tenant`
-  + `settings.setRateSource` (Phase 9c). Still needs UI routes
-  `/settings/account`, `/settings/property/:id` to edit:
-  - Tenant defaults: city-tax rate, check-in/-out times, currency,
-    **rate source (pms / pricelabs)** — backend ready, no UI yet
-  - Per-property: name, group, default rate, cleaning fee, min-stay,
-    description. Already triggers ARI rate enqueue via `properties.update`.
-- **Reinigung module** (3–5 days). New schema:
-  `cleaning_tasks` (auto-generated from bookings), `cleaners`,
-  `cleaner_assignments`. Calendar-like view of cleaning slots,
-  drag-assign, SMS notifications via Twilio.
-- **Messaging Phase 8** (3–4 days). Twilio SMS + Channex Inbox via
-  webhooks. Template engine for scheduled guest messages
-  (`checkin:-1d@18:00`, `checkout:+0d@10:00`). Schema for `messages` +
-  `message_templates` already exists.
+- **Phase 8** sandbox booking simulator; **Phase 9a–d** ARI outbox +
+  global throttled flusher, per-day rate/restriction overrides,
+  per-tenant rateSource, calendar rate editor → Channex
+  certification-ready (see the cert table above).
+- **Messaging M1–M4 + extras**: Channex guest-inbox iframe; template
+  CRUD; per-tenant SMS sender (ADR 0008); automated dispatch cron
+  (trigger DSL incl. `reservation`, DST-safe) + Twilio + delivery
+  webhook; per-booking message timeline; apartment scope +
+  per-booking override; structured trigger builder; tenant **custom
+  variables** (per-apartment values).
+- **Settings page** `/settings` (Allgemein/Preise/SMS, tz+currency
+  dropdowns, Berlin/EUR pinned).
+
+### Genuinely next (good candidates)
+
+- **Reinigung module**. New schema `cleaning_tasks` (auto-generated
+  from bookings), `cleaners`, `cleaner_assignments`; calendar-like
+  view, drag-assign, SMS via the existing Twilio service.
+- **Messaging polish**: custom-variable label edit (API
+  `messageVariables.update` exists, no UI); test-send with apartment
+  picker (custom vars resolve); searchable combobox for the long
+  tz/currency selects.
+- **Resend a failed message**: the `messages(booking_id,template_id)`
+  unique index blocks re-send of a `failed` (e.g. `no_phone`) row by
+  design — add an explicit "retry" that clears/re-claims it.
+- **Per-property settings view** (defaults/variables/sender per
+  apartment in one place) if a centralized editor is wanted.
 
 ### Production readiness
 
 - **Secret rotation reminder** — Channex API key, Supabase service
-  role, Supabase DB password all appeared in chat during development.
-  Rotate before going to production:
+  role, Supabase DB password, **and the Twilio Auth Token** all
+  appeared in chat during development. Rotate before going to
+  production:
   - Channex: User Profile → API Keys → regenerate
   - Supabase: Project Settings → Database → Reset password
   - Supabase: Settings → API → roll service_role key
+  - Twilio: Console → Account → Auth Token → regenerate (currently a
+    budget-capped test token, intentionally accepted by the owner)
 - **Hardening (Phase 12)**: Sentry, structured logs, Vitest unit
   tests, an integration test that drives the full sync cycle.
 
@@ -413,5 +428,36 @@ once during dev; consider rotating again before any deployment.
 Paste this in the new session's first message:
 
 > Pick up work on the channel-manager project at
-> `C:\Users\User\iCloudDrive\channel-manager`. Read
-> `docs/status.md` and `CLAUDE.md` for context, then [DESCRIBE YOUR TASK].
+> `C:\Users\User\iCloudDrive\channel-manager`. Read `docs/status.md`
+> first (full state + handoff notes), then `CLAUDE.md`, then
+> [DESCRIBE YOUR TASK].
+
+### Operational notes for the next session (read these)
+
+- **Everything is committed.** `git log` HEAD ≈
+  `b428d40 settings: pin Europe/Berlin & EUR …`. Working tree is clean
+  **except** `packages/db/migrations/9999_rls_policies.sql`, which is
+  **intentionally left untracked** — do not commit it, do not delete it.
+- **Dev servers** (start if not running, from the repo root):
+  - `pnpm --filter @cm/worker dev` → tRPC + Inngest + webhooks on **:3001**
+  - `pnpm --filter @cm/web dev` → Vite SPA on **:5173**
+  - `npx inngest-cli@latest dev -u http://localhost:3001/api/inngest --no-discovery` → Inngest UI **:8288**
+  - Worker does NOT reliably hot-reload changes in `packages/*`; after
+    editing a package, restart the worker.
+- **Auth is magic-link (Supabase, PKCE).** A magic link can't be
+  completed in a different browser (single-use + PKCE verifier). For
+  authed UI verification, use the **Claude-in-Chrome extension** on the
+  user's already-logged-in browser (the user enables it on request).
+- **Twilio** test credentials are in `.env.local` (budget-capped, owner
+  accepted). Sending real SMS costs money — get explicit per-number
+  consent before any live send.
+- **Sandbox limits** (not bugs): no real OTA channels → OTA messaging /
+  bookings only simulatable; Channex **CRS booking** and the
+  **Messages app** are enabled only on **Whg 0**.
+- **Verify before claiming done**: `pnpm -r typecheck` must be clean;
+  prefer a throwaway script under `packages/db/scripts/` for logic
+  E2E, deleted after. Commit per feature with the established message
+  style; update this file as part of the change.
+- **Decisions are ADRs** `docs/adr/0001–0008`. The Channex
+  certification status + the deliberate single-room-type scope are in
+  the phase/cert tables above and ADR 0007.
