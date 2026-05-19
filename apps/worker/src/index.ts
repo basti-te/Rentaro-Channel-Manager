@@ -8,6 +8,7 @@ import { appRouter, createContext } from '@cm/api';
 import { env } from './env';
 import { inngest, inngestFunctions } from './inngest';
 import { channexWebhook } from './webhooks/channex';
+import { twilioWebhook } from './webhooks/twilio';
 
 const app = new Hono();
 
@@ -52,6 +53,7 @@ app.all('/trpc/*', async (c) => {
 
 // ── Channex inbound webhooks ─────────────────────────────────────────────────
 app.route('/api/webhooks/channex', channexWebhook);
+app.route('/api/webhooks/twilio', twilioWebhook);
 
 const port = env.PORT;
 console.log(`→ API server on http://localhost:${port}`);

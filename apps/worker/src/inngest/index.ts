@@ -3,6 +3,7 @@ export type { Events } from './events';
 
 import { ariFlush, ariFlushCron } from './functions/ari-flush';
 import { ingestBookings } from './functions/ingest-bookings';
+import { messagesDispatch } from './functions/messages-dispatch';
 
 /**
  * All functions Inngest should serve. Add new ones here.
@@ -12,4 +13,9 @@ import { ingestBookings } from './functions/ingest-bookings';
  * (debounced + throttled) batches it into ~2 Channex calls. `ariFlushCron`
  * is the 5-min safety drain.
  */
-export const inngestFunctions = [ariFlush, ariFlushCron, ingestBookings];
+export const inngestFunctions = [
+  ariFlush,
+  ariFlushCron,
+  ingestBookings,
+  messagesDispatch,
+];

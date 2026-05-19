@@ -11,6 +11,9 @@ export interface TwilioConfig {
   accountSid?: string;
   authToken?: string;
   from?: string;
+  /** Public URL Twilio POSTs delivery status to. Omitted in local dev
+   *  (Twilio can't reach localhost) → status stays "sent", never "delivered". */
+  statusCallback?: string;
 }
 
 export type TwilioSendResult =
@@ -31,6 +34,7 @@ export async function sendSms(
 
   const auth = Buffer.from(`${c.accountSid}:${c.authToken}`).toString('base64');
   const form = new URLSearchParams({ To: to, From: c.from!, Body: body });
+  if (c.statusCallback) form.set('StatusCallback', c.statusCallback);
 
   let res: Response;
   try {

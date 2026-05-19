@@ -20,6 +20,15 @@ const Env = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional().transform((v) => v || undefined),
   TWILIO_AUTH_TOKEN: z.string().optional().transform((v) => v || undefined),
   TWILIO_FROM: z.string().optional().transform((v) => v || undefined),
+  /** Secret path segment for the Twilio delivery-status webhook. */
+  TWILIO_STATUS_SECRET: z.string().optional().transform((v) => v || undefined),
+  /** Public base URL (no trailing slash) for inbound webhooks. Unset in
+   *  local dev → Twilio status callbacks are skipped. */
+  PUBLIC_WEBHOOK_BASE_URL: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(z.string().url().optional()),
 
   // Inngest — all optional in dev (cli auto-detects local mode).
   // Coerce empty strings to undefined so a placeholder `KEY=` line in

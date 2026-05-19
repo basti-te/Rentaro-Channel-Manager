@@ -25,3 +25,15 @@ export type AppRouter = typeof appRouter;
 
 export * from './context';
 export { createContext } from './context';
+
+// Shared messaging helpers — reused by the worker's dispatch cron.
+export {
+  renderTemplate,
+  buildBookingVars,
+  TEMPLATE_VARS,
+  SAMPLE_VARS,
+  type TemplateVars,
+  type BookingVarSource,
+} from './services/templates';
+export { computeDueAt, parseTrigger, type ParsedTrigger } from './services/triggers';
+export { sendSms, isTwilioConfigured, type TwilioConfig } from './services/twilio';

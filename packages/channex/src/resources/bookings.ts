@@ -71,6 +71,23 @@ export class BookingsAPI {
   }
 
   /**
+   * Send a guest message into a booking's OTA thread (Airbnb / Booking.com
+   * / Expedia) via the Channex Messages app. Requires the Messages app
+   * installed on the property and an active messaging-capable channel —
+   * otherwise Channex returns an error (surfaced to the caller).
+   *
+   * https://docs.channex.io/api-v.1-documentation/messages-collection
+   */
+  async sendMessage(channexBookingId: string, message: string): Promise<void> {
+    await this.http.request({
+      method: 'POST',
+      path: `/bookings/${channexBookingId}/messages`,
+      body: { message: { message } },
+      retries: 0, // not idempotent — never replay a guest message
+    });
+  }
+
+  /**
    * Create a booking via the Channex Booking CRS API.
    * Used by the sandbox simulator to mint OTA-like reservations for E2E
    * testing of the inbound ingestion pipeline. The response carries the new

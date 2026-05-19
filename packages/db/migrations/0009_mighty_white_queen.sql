@@ -1,0 +1,2 @@
+CREATE INDEX IF NOT EXISTS "messages_external_idx" ON "messages" USING btree ("external_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "messages_booking_template_uq" ON "messages" USING btree ("booking_id","template_id");

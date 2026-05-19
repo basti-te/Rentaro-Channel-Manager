@@ -559,6 +559,17 @@ export const messages = pgTable(
     byBooking: index('messages_booking_idx').on(t.bookingId),
     byScheduled: index('messages_scheduled_idx').on(t.status, t.scheduledAt),
     byTenant: index('messages_tenant_idx').on(t.tenantId),
+    byExternal: index('messages_external_idx').on(t.externalId),
+    /**
+     * One automated message per (booking, template). Postgres treats NULLs
+     * as distinct, so inbound/manual rows (template_id NULL and/or
+     * booking_id NULL) are unconstrained — only template-driven sends
+     * dedupe. The dispatch cron relies on this via ON CONFLICT DO NOTHING.
+     */
+    dedupeTemplate: uniqueIndex('messages_booking_template_uq').on(
+      t.bookingId,
+      t.templateId,
+    ),
   }),
 );
 

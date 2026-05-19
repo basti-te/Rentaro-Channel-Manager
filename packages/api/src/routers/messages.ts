@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { and, eq } from 'drizzle-orm';
-import { channexProperties, properties } from '@cm/db';
+import { and, desc, eq } from 'drizzle-orm';
+import { channexProperties, messages, properties } from '@cm/db';
 import { createChannexClient, ChannexError } from '@cm/channex';
-import { router, editorProcedure } from '../trpc';
+import { router, tenantProcedure, editorProcedure } from '../trpc';
 
 /**
  * Channex iframe path for the guest-messaging screen. The mapping iframe
@@ -14,6 +14,33 @@ import { router, editorProcedure } from '../trpc';
 const CHANNEX_MESSAGES_PATH = '/messages';
 
 export const messagesRouter = router({
+  /** Automated/sent messages for a booking (status timeline for the UI). */
+  listByBooking: tenantProcedure
+    .input(z.object({ bookingId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db
+        .select({
+          id: messages.id,
+          channel: messages.channel,
+          direction: messages.direction,
+          body: messages.body,
+          status: messages.status,
+          scheduledAt: messages.scheduledAt,
+          sentAt: messages.sentAt,
+          deliveredAt: messages.deliveredAt,
+          error: messages.error,
+          createdAt: messages.createdAt,
+        })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.tenantId, ctx.tenantId!),
+            eq(messages.bookingId, input.bookingId),
+          ),
+        )
+        .orderBy(desc(messages.createdAt));
+    }),
+
   /**
    * Mint a short-lived Channex one-time token server-side and return the
    * ready-to-embed iframe URL for a property's guest inbox.
