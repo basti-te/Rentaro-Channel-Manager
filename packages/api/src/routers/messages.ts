@@ -28,10 +28,13 @@ const CHANNEX_MESSAGES_PATH = '/messages';
 /** One row in a booking's message timeline (sent rows + projected sends). */
 export interface MessageTimelineItem {
   key: string;
+  /** Active template this row maps to (null for manual / deleted-template). */
+  templateId: string | null;
   title: string;
   channel: string;
   trigger: string | null;
   status:
+    | 'off'
     | 'planned'
     | 'pending'
     | 'queued'
@@ -39,6 +42,10 @@ export interface MessageTimelineItem {
     | 'sent'
     | 'delivered'
     | 'failed';
+  /** Effective on/off for THIS booking (override ?? apartment scope). */
+  enabled: boolean;
+  /** A per-booking override row exists (vs. inheriting the apartment scope). */
+  overridden: boolean;
   /** ISO — sent time, or the projected due time for not-yet-sent items. */
   at: string | null;
   body: string;
@@ -210,17 +217,19 @@ export const messagesRouter = router({
 
       const items: MessageTimelineItem[] = [];
 
+      // Every active template is listed (so the booking detail can toggle
+      // it on/off for this booking); status reflects scope/override/rows.
       for (const t of tpls) {
+        const overrideVal = overrideByTpl.get(t.id);
         const enabled = isTemplateEnabledForBooking({
           propertyId: bk.propertyId,
           scopedPropertyIds: inScope.has(t.id)
             ? new Set([bk.propertyId])
             : new Set(),
-          override: overrideByTpl.get(t.id),
+          override: overrideVal,
         });
+        const overridden = overrideVal !== undefined;
         const row = rowByTpl.get(t.id);
-        // Don't project a message that won't send; keep real rows as history.
-        if (!enabled && !row) continue;
         const due = computeDueAt(t.trigger, {
           checkin: bk.checkin,
           checkout: bk.checkout,
@@ -230,10 +239,13 @@ export const messagesRouter = router({
         if (row) {
           items.push({
             key: `tpl-${t.id}`,
+            templateId: t.id,
             title: t.name,
             channel: row.channel,
             trigger: t.trigger,
             status: row.status as MessageTimelineItem['status'],
+            enabled,
+            overridden,
             at: (row.sentAt ?? row.scheduledAt ?? null)?.toISOString() ?? null,
             body: row.body,
             error: row.error,
@@ -241,10 +253,17 @@ export const messagesRouter = router({
         } else {
           items.push({
             key: `tpl-${t.id}`,
+            templateId: t.id,
             title: t.name,
             channel: t.channel,
             trigger: t.trigger,
-            status: due && due.getTime() > now ? 'planned' : 'pending',
+            status: !enabled
+              ? 'off'
+              : due && due.getTime() > now
+                ? 'planned'
+                : 'pending',
+            enabled,
+            overridden,
             at: due ? due.toISOString() : null,
             body: renderTemplate(t.body, vars),
             error: null,
@@ -257,10 +276,13 @@ export const messagesRouter = router({
         if (r.templateId && tpls.some((t) => t.id === r.templateId)) continue;
         items.push({
           key: `msg-${r.id}`,
+          templateId: null,
           title: r.templateId ? 'Vorlage (entfernt)' : 'Manuell',
           channel: r.channel,
           trigger: null,
           status: r.status as MessageTimelineItem['status'],
+          enabled: true,
+          overridden: false,
           at: (r.sentAt ?? r.scheduledAt ?? r.createdAt)?.toISOString() ?? null,
           body: r.body,
           error: r.error,
@@ -269,6 +291,78 @@ export const messagesRouter = router({
 
       items.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''));
       return items;
+    }),
+
+  /**
+   * Per-booking override of a template's apartment scope.
+   *   enabled=true  → force on for this booking
+   *   enabled=false → force off for this booking
+   *   enabled=null  → clear the override (inherit apartment scope)
+   */
+  setBookingOverride: editorProcedure
+    .input(
+      z.object({
+        bookingId: z.string().uuid(),
+        templateId: z.string().uuid(),
+        enabled: z.boolean().nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Ownership: booking + template must belong to the tenant.
+      const ok = (
+        await ctx.db
+          .select({ id: bookings.id })
+          .from(bookings)
+          .where(
+            and(
+              eq(bookings.id, input.bookingId),
+              eq(bookings.tenantId, ctx.tenantId!),
+            ),
+          )
+          .limit(1)
+      )[0];
+      if (!ok) throw new TRPCError({ code: 'NOT_FOUND' });
+      const tpl = (
+        await ctx.db
+          .select({ id: messageTemplates.id })
+          .from(messageTemplates)
+          .where(
+            and(
+              eq(messageTemplates.id, input.templateId),
+              eq(messageTemplates.tenantId, ctx.tenantId!),
+            ),
+          )
+          .limit(1)
+      )[0];
+      if (!tpl) throw new TRPCError({ code: 'NOT_FOUND' });
+
+      if (input.enabled === null) {
+        await ctx.db
+          .delete(messageBookingOverrides)
+          .where(
+            and(
+              eq(messageBookingOverrides.bookingId, input.bookingId),
+              eq(messageBookingOverrides.templateId, input.templateId),
+            ),
+          );
+        return { cleared: true };
+      }
+
+      await ctx.db
+        .insert(messageBookingOverrides)
+        .values({
+          bookingId: input.bookingId,
+          templateId: input.templateId,
+          enabled: input.enabled,
+        })
+        .onConflictDoUpdate({
+          target: [
+            messageBookingOverrides.bookingId,
+            messageBookingOverrides.templateId,
+          ],
+          set: { enabled: input.enabled, updatedAt: new Date() },
+        });
+      return { enabled: input.enabled };
     }),
 
   /**

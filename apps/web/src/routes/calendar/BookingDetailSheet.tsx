@@ -17,6 +17,7 @@ import {
 import { cn } from '@cm/ui';
 
 import { Button } from '../../components/ui/Button';
+import { Switch } from '../../components/ui/Switch';
 import { trpc } from '../../lib/trpc';
 import type { BookingSource } from './BookingBlock';
 
@@ -440,7 +441,7 @@ const MSG_CHANNEL_LABEL: Record<string, string> = {
 
 const MSG_STATUS_META: Record<
   string,
-  { label: string; group: 'sent' | 'planned' | 'failed'; cls: string }
+  { label: string; group: 'sent' | 'planned' | 'failed' | 'off'; cls: string }
 > = {
   delivered: { label: 'Zugestellt', group: 'sent', cls: 'text-positive' },
   sent: { label: 'Gesendet', group: 'sent', cls: 'text-positive' },
@@ -449,16 +450,26 @@ const MSG_STATUS_META: Record<
   pending: { label: 'Fällig', group: 'planned', cls: 'text-warning' },
   planned: { label: 'Geplant', group: 'planned', cls: 'text-muted' },
   failed: { label: 'Fehlgeschlagen', group: 'failed', cls: 'text-danger' },
+  off: { label: 'Aus', group: 'off', cls: 'text-muted' },
 };
 
-const MSG_GROUP_ORDER: Array<{ key: 'sent' | 'planned' | 'failed'; label: string }> = [
+const MSG_GROUP_ORDER: Array<{
+  key: 'sent' | 'planned' | 'failed' | 'off';
+  label: string;
+}> = [
   { key: 'planned', label: 'Geplant' },
   { key: 'sent', label: 'Gesendet' },
   { key: 'failed', label: 'Fehlgeschlagen' },
+  { key: 'off', label: 'Deaktiviert' },
 ];
 
 function MessagesSection({ bookingId }: { bookingId: string }) {
+  const utils = trpc.useUtils();
   const q = trpc.messages.timelineForBooking.useQuery({ bookingId });
+  const setOverride = trpc.messages.setBookingOverride.useMutation({
+    onSuccess: () => utils.messages.timelineForBooking.invalidate({ bookingId }),
+    onError: (e) => toast.error(e.message),
+  });
 
   return (
     <Section icon={<MessageSquare className="h-4 w-4" />} label="Nachrichten">
@@ -487,6 +498,7 @@ function MessagesSection({ bookingId }: { bookingId: string }) {
                     const when = i.at
                       ? format(new Date(i.at), 'd. MMM, HH:mm', { locale: de })
                       : null;
+                    const togglable = i.templateId != null;
                     return (
                       <li
                         key={i.key}
@@ -507,14 +519,39 @@ function MessagesSection({ bookingId }: { bookingId: string }) {
                           >
                             {meta.label}
                           </span>
+                          {togglable && (
+                            <Switch
+                              size="sm"
+                              checked={i.enabled}
+                              disabled={setOverride.isPending}
+                              onChange={(next) =>
+                                setOverride.mutate({
+                                  bookingId,
+                                  templateId: i.templateId!,
+                                  enabled: next,
+                                })
+                              }
+                              aria-label="Für diese Buchung an/aus"
+                            />
+                          )}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted">
                           {i.trigger && <span className="num">{i.trigger}</span>}
-                          {when && (
-                            <span>
-                              {meta.group === 'sent' ? '· ' : '· '}
-                              {when}
-                            </span>
+                          {when && <span>· {when}</span>}
+                          {i.overridden && (
+                            <button
+                              type="button"
+                              className="text-brand hover:underline"
+                              onClick={() =>
+                                setOverride.mutate({
+                                  bookingId,
+                                  templateId: i.templateId!,
+                                  enabled: null,
+                                })
+                              }
+                            >
+                              · Override · auf Apartment-Standard
+                            </button>
                           )}
                         </div>
                         {i.error && (
