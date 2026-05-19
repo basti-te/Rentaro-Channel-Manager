@@ -16,6 +16,11 @@ import type { AppRouter } from '@cm/api';
 import { cn } from '@cm/ui';
 
 import { PageHeader } from './_dashboard';
+import {
+  TriggerBuilder,
+  buildTriggerDsl,
+  parseTriggerDsl,
+} from '../components/TriggerBuilder';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Label } from '../components/ui/Label';
@@ -35,66 +40,6 @@ const CHANNEL_LABEL: Record<string, string> = {
   booking_com: 'Booking.com',
   email: 'E-Mail',
 };
-
-// ── Structured trigger builder ──────────────────────────────────────────────
-
-type Anchor = 'reservation' | 'checkin' | 'checkout';
-type Rel = 'before' | 'on' | 'after';
-
-const ANCHOR_LABEL: Record<Anchor, string> = {
-  reservation: 'Neue Reservierung',
-  checkin: 'Check-in',
-  checkout: 'Check-out',
-};
-
-/** Allowed relations per anchor + their labels (per the product spec). */
-const REL_OPTIONS: Record<Anchor, Array<{ rel: Rel; label: string }>> = {
-  reservation: [
-    { rel: 'on', label: 'Am Tag der Reservierung' },
-    { rel: 'after', label: 'Tage nach Reservierung' },
-  ],
-  checkin: [
-    { rel: 'before', label: 'Tage vor Check-in' },
-    { rel: 'on', label: 'Am Check-in-Tag' },
-    { rel: 'after', label: 'Tage nach Check-in' },
-  ],
-  checkout: [
-    { rel: 'on', label: 'Am Check-out-Tag' },
-    { rel: 'after', label: 'Tage nach Check-out' },
-  ],
-};
-
-/** "00:00" … "23:30" in 30-min steps (listing-local time). */
-const TIME_OPTIONS: string[] = Array.from({ length: 48 }, (_, i) => {
-  const h = String(Math.floor(i / 2)).padStart(2, '0');
-  const m = i % 2 === 0 ? '00' : '30';
-  return `${h}:${m}`;
-});
-
-interface TriggerParts {
-  anchor: Anchor;
-  rel: Rel;
-  days: number; // 1–90, used when rel !== 'on'
-  time: string; // HH:MM
-}
-
-function buildTriggerDsl(p: TriggerParts): string {
-  if (p.rel === 'on') return `${p.anchor}:+0d@${p.time}`;
-  const sign = p.rel === 'before' ? '-' : '+';
-  return `${p.anchor}:${sign}${p.days}d@${p.time}`;
-}
-
-function parseTriggerDsl(s: string): TriggerParts {
-  // Legacy bare trigger → "on day of reservation" (time defaulted).
-  if (s === 'booking_created')
-    return { anchor: 'reservation', rel: 'on', days: 1, time: '09:00' };
-  const m = /^(reservation|checkin|checkout):([+-]?\d{1,3})d@(\d\d:\d\d)$/.exec(s);
-  if (!m) return { anchor: 'checkin', rel: 'before', days: 1, time: '18:00' };
-  const off = Number(m[2]);
-  const anchor = m[1] as Anchor;
-  const rel: Rel = off === 0 ? 'on' : off < 0 ? 'before' : 'after';
-  return { anchor, rel, days: Math.min(90, Math.abs(off) || 1), time: m[3]! };
-}
 
 export function MessagesPage() {
   const [tab, setTab] = useState<Tab>('inbox');
@@ -355,11 +300,9 @@ function TemplateDialog({
   const isEdit = !!template;
   const [name, setName] = useState(template?.name ?? '');
   const [chan, setChan] = useState<Template['channel']>(template?.channel ?? 'sms');
-  const initialTrig = parseTriggerDsl(template?.trigger ?? 'checkin:-1d@18:00');
-  const [anchor, setAnchor] = useState<Anchor>(initialTrig.anchor);
-  const [rel, setRel] = useState<Rel>(initialTrig.rel);
-  const [days, setDays] = useState<number>(initialTrig.days);
-  const [time, setTime] = useState<string>(initialTrig.time);
+  const [trig, setTrig] = useState(() =>
+    parseTriggerDsl(template?.trigger ?? 'checkin:-1d@18:00'),
+  );
   const [language, setLanguage] = useState(template?.language ?? 'de');
   const [body, setBody] = useState(template?.body ?? '');
   const [active, setActive] = useState(template?.active ?? true);
@@ -371,14 +314,6 @@ function TemplateDialog({
 
   const varsQ = trpc.messageTemplates.vars.useQuery();
   const propsQ = trpc.properties.list.useQuery();
-
-  // Keep `rel` valid when the anchor changes.
-  function changeAnchor(a: Anchor) {
-    setAnchor(a);
-    if (!REL_OPTIONS[a].some((o) => o.rel === rel)) {
-      setRel(REL_OPTIONS[a][0]!.rel);
-    }
-  }
 
   const create = trpc.messageTemplates.create.useMutation({
     onSuccess: () => {
@@ -406,7 +341,7 @@ function TemplateDialog({
   function submit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim() || !body.trim()) return;
-    const trigger = buildTriggerDsl({ anchor, rel, days, time });
+    const trigger = buildTriggerDsl(trig);
     const ids = [...listingIds];
     if (isEdit && template) {
       update.mutate({
@@ -476,73 +411,7 @@ function TemplateDialog({
             </div>
           </div>
 
-          {/* Trigger builder */}
-          <div className="space-y-1.5">
-            <Label>Trigger</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                value={anchor}
-                onChange={(e) => changeAnchor(e.target.value as Anchor)}
-                className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none transition-colors"
-                aria-label="Ereignis"
-              >
-                {(Object.keys(ANCHOR_LABEL) as Anchor[]).map((a) => (
-                  <option key={a} value={a}>
-                    {ANCHOR_LABEL[a]}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={rel}
-                onChange={(e) => setRel(e.target.value as Rel)}
-                className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none transition-colors"
-                aria-label="Zeitpunkt"
-              >
-                {REL_OPTIONS[anchor].map((o) => (
-                  <option key={o.rel} value={o.rel}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {rel !== 'on' ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={90}
-                    value={days}
-                    onChange={(e) =>
-                      setDays(
-                        Math.max(1, Math.min(90, Number(e.target.value) || 1)),
-                      )
-                    }
-                    className="w-20"
-                    aria-label="Tage"
-                  />
-                  <span className="text-[12.5px] text-muted">Tage</span>
-                </div>
-              ) : (
-                <div />
-              )}
-              <select
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none transition-colors"
-                aria-label="Uhrzeit"
-              >
-                {TIME_OPTIONS.map((t) => (
-                  <option key={t} value={t}>
-                    {t} Uhr
-                  </option>
-                ))}
-              </select>
-            </div>
-            <p className="text-[11px] text-whisper">
-              Uhrzeit in lokaler Zeit des Apartments.
-            </p>
-          </div>
+          <TriggerBuilder value={trig} onChange={setTrig} />
 
           {/* Listings (explicit allow-list) */}
           <div className="space-y-1.5">
