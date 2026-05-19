@@ -9,6 +9,9 @@ import { settingsRouter } from './routers/settings';
 import { messagesRouter } from './routers/messages';
 import { messageTemplatesRouter } from './routers/message-templates';
 import { messageVariablesRouter } from './routers/message-variables';
+import { teammatesRouter } from './routers/teammates';
+import { cleaningChecklistsRouter } from './routers/cleaning-checklists';
+import { cleaningRulesRouter } from './routers/cleaning-rules';
 
 export const appRouter = router({
   me: meRouter,
@@ -21,6 +24,9 @@ export const appRouter = router({
   messages: messagesRouter,
   messageTemplates: messageTemplatesRouter,
   messageVariables: messageVariablesRouter,
+  teammates: teammatesRouter,
+  cleaningChecklists: cleaningChecklistsRouter,
+  cleaningRules: cleaningRulesRouter,
 });
 
 export type AppRouter = typeof appRouter;
@@ -46,3 +52,14 @@ export {
 export { sendSms, isTwilioConfigured, type TwilioConfig } from './services/twilio';
 export { isTemplateEnabledForBooking } from './services/scope';
 export { resolveCustomVars, CUSTOM_VAR_KEY_RE } from './services/custom-vars';
+
+// Shared cleaning helpers — reused by the worker's cleaning-dispatch cron.
+export {
+  CLEANING_VARS,
+  CLEANING_SAMPLE_VARS,
+  buildCleaningVars,
+  findNextReservation,
+  renderChecklist,
+  type CleaningBookingSource,
+  type NextReservation,
+} from './services/cleaning';
