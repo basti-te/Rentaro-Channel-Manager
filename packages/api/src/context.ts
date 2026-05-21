@@ -63,6 +63,18 @@ export type AppEvents = {
       hintBookingId?: string;
     };
   };
+  /**
+   * Full Sync — push 500 days of availability + rates/restrictions for one
+   * property to Channex in 2 calls. One event per property; the worker
+   * handler is throttled so a "sync all" paces itself.
+   */
+  'channex/full-sync': {
+    data: {
+      propertyId: string;
+      days?: number;
+      reason?: string;
+    };
+  };
 };
 
 type AppInngest = ReturnType<typeof getInngest>;

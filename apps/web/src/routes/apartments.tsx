@@ -1,6 +1,14 @@
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { Check, Link2, Plus, GripVertical, FlaskConical } from 'lucide-react';
+import {
+  Check,
+  Link2,
+  Plus,
+  GripVertical,
+  FlaskConical,
+  RefreshCw,
+  Copy,
+} from 'lucide-react';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@cm/api';
 import { cn } from '@cm/ui';
@@ -15,6 +23,7 @@ import { trpc } from '../lib/trpc';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type PropertyRow = RouterOutput['properties']['list'][number];
+type FullSyncRow = RouterOutput['sync']['fullSyncStatus'][number];
 
 export function ApartmentsPage() {
   const utils = trpc.useUtils();
@@ -28,6 +37,27 @@ export function ApartmentsPage() {
   });
   const crsCapable = new Set(crsQ.data ?? []);
 
+  // Latest Full Sync result per property. Polled — the worker writes the
+  // row asynchronously, and a "sync all" trickles in over a few minutes.
+  const fullSyncQ = trpc.sync.fullSyncStatus.useQuery(undefined, {
+    refetchInterval: 5000,
+  });
+  const fullSyncByProp = new Map<string, FullSyncRow>(
+    (fullSyncQ.data ?? []).flatMap((r) =>
+      r.propertyId ? [[r.propertyId, r]] : [],
+    ),
+  );
+
+  const fullSyncAll = trpc.sync.fullSyncAll.useMutation({
+    onSuccess: (r) =>
+      toast.success(
+        r.count > 0
+          ? `Full Sync für ${r.count} Apartment${r.count === 1 ? '' : 's'} gestartet`
+          : 'Keine verbundenen Apartments für einen Full Sync',
+      ),
+    onError: (e) => toast.error(e.message),
+  });
+
   const [showNew, setShowNew] = useState(false);
 
   return (
@@ -36,13 +66,23 @@ export function ApartmentsPage() {
         title="Apartments"
         subtitle="Your inventory. Group by building or city, then connect channels per apartment."
         action={
-          <Button
-            variant="brand"
-            iconLeft={<Plus className="h-4 w-4" />}
-            onClick={() => setShowNew(true)}
-          >
-            New apartment
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              iconLeft={<RefreshCw className="h-4 w-4" />}
+              loading={fullSyncAll.isPending}
+              onClick={() => fullSyncAll.mutate()}
+            >
+              Alle synchronisieren
+            </Button>
+            <Button
+              variant="brand"
+              iconLeft={<Plus className="h-4 w-4" />}
+              onClick={() => setShowNew(true)}
+            >
+              New apartment
+            </Button>
+          </div>
         }
       />
 
@@ -56,6 +96,7 @@ export function ApartmentsPage() {
             groups={groupsQ.data ?? []}
             properties={propsQ.data ?? []}
             crsCapable={crsCapable}
+            fullSyncByProp={fullSyncByProp}
           />
         )}
       </div>
@@ -78,10 +119,12 @@ function Grouped({
   groups,
   properties,
   crsCapable,
+  fullSyncByProp,
 }: {
   groups: Array<{ id: string; name: string; color: string }>;
   properties: PropertyRow[];
   crsCapable: Set<string>;
+  fullSyncByProp: Map<string, FullSyncRow>;
 }) {
   // Bucket properties by group
   const grouped = new Map<string | null, PropertyRow[]>();
@@ -133,6 +176,7 @@ function Grouped({
                     key={p.id}
                     property={p}
                     crsCapable={crsCapable.has(p.id)}
+                    fullSync={fullSyncByProp.get(p.id)}
                   />
                 ))}
               </ul>
@@ -147,15 +191,24 @@ function Grouped({
 function PropertyRowItem({
   property,
   crsCapable,
+  fullSync,
 }: {
   property: PropertyRow;
   crsCapable: boolean;
+  fullSync: FullSyncRow | undefined;
 }) {
   const utils = trpc.useUtils();
   const onboard = trpc.properties.onboardToChannex.useMutation({
     onSuccess: () => {
       toast.success(`${property.name} mit Channex verbunden`);
       void utils.properties.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const fullSyncMut = trpc.sync.fullSync.useMutation({
+    onSuccess: () => {
+      toast.success(`Full Sync für ${property.name} gestartet`);
+      void utils.sync.fullSyncStatus.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -166,68 +219,94 @@ function PropertyRowItem({
   // booking (property has a CRS app connected). Avoids a confusing 403.
   const canSimulate = import.meta.env.DEV && crsCapable;
 
+  const fs = (fullSync?.result ?? null) as {
+    availabilityTaskIds?: string[];
+    restrictionTaskIds?: string[];
+  } | null;
+
   return (
-    <li className="flex items-center gap-3 px-4 py-3 hover:bg-sunken/40 transition-colors">
-      <button
-        type="button"
-        className="text-whisper hover:text-muted cursor-grab active:cursor-grabbing"
-        aria-label="Drag to reorder"
-        tabIndex={-1}
-      >
-        <GripVertical className="h-4 w-4" strokeWidth={1.75} />
-      </button>
-      <div className="flex-1 min-w-0">
-        <div className="text-[14px] font-medium text-ink truncate">
-          {property.name}
-        </div>
-        {property.description && (
-          <div className="text-[12px] text-muted truncate mt-0.5">
-            {property.description}
+    <li className="px-4 py-3 hover:bg-sunken/40 transition-colors">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          className="text-whisper hover:text-muted cursor-grab active:cursor-grabbing"
+          aria-label="Drag to reorder"
+          tabIndex={-1}
+        >
+          <GripVertical className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="text-[14px] font-medium text-ink truncate">
+            {property.name}
           </div>
-        )}
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {connected ? (
-          <>
-            {canSimulate && (
-              <button
-                type="button"
-                onClick={() => setShowSimulate(true)}
-                className={cn(
-                  'inline-flex items-center gap-1 px-2 py-1 rounded-md',
-                  'text-whisper hover:text-ink hover:bg-sunken',
-                  'text-[11px] transition-colors',
-                )}
-                title="Sandbox: OTA-Buchung simulieren"
-              >
-                <FlaskConical className="h-3.5 w-3.5" strokeWidth={1.75} />
-                Simulieren
-              </button>
-            )}
-            <span
-              className={cn(
-                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full',
-                'bg-positive-soft text-positive border border-positive/30',
-                'text-[10.5px] uppercase tracking-wider font-semibold',
+          {property.description && (
+            <div className="text-[12px] text-muted truncate mt-0.5">
+              {property.description}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {connected ? (
+            <>
+              {canSimulate && (
+                <button
+                  type="button"
+                  onClick={() => setShowSimulate(true)}
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2 py-1 rounded-md',
+                    'text-whisper hover:text-ink hover:bg-sunken',
+                    'text-[11px] transition-colors',
+                  )}
+                  title="Sandbox: OTA-Buchung simulieren"
+                >
+                  <FlaskConical className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Simulieren
+                </button>
               )}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                loading={fullSyncMut.isPending}
+                iconLeft={<RefreshCw className="h-3.5 w-3.5" />}
+                onClick={() => fullSyncMut.mutate({ propertyId: property.id })}
+                title="500 Tage Verfügbarkeit + Raten an Channex senden (2 Calls)"
+              >
+                Full Sync
+              </Button>
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 px-2 py-0.5 rounded-full',
+                  'bg-positive-soft text-positive border border-positive/30',
+                  'text-[10.5px] uppercase tracking-wider font-semibold',
+                )}
+              >
+                <Check className="h-3 w-3" strokeWidth={2.5} />
+                Verbunden
+              </span>
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              loading={onboard.isPending}
+              iconLeft={<Link2 className="h-3.5 w-3.5" />}
+              onClick={() => onboard.mutate({ propertyId: property.id })}
             >
-              <Check className="h-3 w-3" strokeWidth={2.5} />
-              Verbunden
-            </span>
-          </>
-        ) : (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            loading={onboard.isPending}
-            iconLeft={<Link2 className="h-3.5 w-3.5" />}
-            onClick={() => onboard.mutate({ propertyId: property.id })}
-          >
-            Verbinden
-          </Button>
-        )}
+              Verbinden
+            </Button>
+          )}
+        </div>
       </div>
+
+      {connected && fs && (
+        <FullSyncResult
+          finishedAt={fullSync?.finishedAt ?? null}
+          availability={fs.availabilityTaskIds ?? []}
+          restrictions={fs.restrictionTaskIds ?? []}
+        />
+      )}
 
       {showSimulate && (
         <SimulateBookingDialog
@@ -237,6 +316,68 @@ function PropertyRowItem({
         />
       )}
     </li>
+  );
+}
+
+/**
+ * Compact Full Sync result line — shows the Channex task id(s) returned by
+ * the last full sync. The ids are click-to-copy for the certification form.
+ */
+function FullSyncResult({
+  finishedAt,
+  availability,
+  restrictions,
+}: {
+  finishedAt: Date | string | null;
+  availability: string[];
+  restrictions: string[];
+}) {
+  const when = finishedAt
+    ? new Date(finishedAt).toLocaleString('de-DE', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
+
+  return (
+    <div className="mt-2 ml-7 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
+      <span className="inline-flex items-center gap-1 text-positive">
+        <Check className="h-3 w-3" strokeWidth={2.5} />
+        Full Sync{when ? ` · ${when}` : ''}
+      </span>
+      {availability.map((id) => (
+        <TaskId key={id} label="Availability" id={id} />
+      ))}
+      {restrictions.map((id) => (
+        <TaskId key={id} label="Restrictions" id={id} />
+      ))}
+      {availability.length === 0 && restrictions.length === 0 && (
+        <span className="text-whisper italic">keine Task-ID zurückgegeben</span>
+      )}
+    </div>
+  );
+}
+
+function TaskId({ label, id }: { label: string; id: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard.writeText(id);
+        toast.success(`${label}-Task-ID kopiert`);
+      }}
+      title="Klicken zum Kopieren"
+      className={cn(
+        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded',
+        'bg-sunken text-muted hover:text-ink transition-colors',
+      )}
+    >
+      <span className="text-whisper">{label}:</span>
+      <span className="num">{id}</span>
+      <Copy className="h-3 w-3" strokeWidth={1.75} />
+    </button>
   );
 }
 

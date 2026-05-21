@@ -90,4 +90,19 @@ export type Events = {
       reason?: string;
     };
   };
+
+  /**
+   * Full Sync — push 500 days of availability + rates/restrictions for one
+   * property in 2 Channex calls. One event per property; the handler is
+   * throttled so a "sync all" (many events) paces itself under the rate
+   * limit. Used for go-live, recovery, and PMS certification.
+   */
+  'channex/full-sync': {
+    data: {
+      propertyId: string;
+      /** Window length in days. Default 500 (Channex certification spec). */
+      days?: number;
+      reason?: string;
+    };
+  };
 };
