@@ -76,6 +76,9 @@ export const syncJobTypeEnum = pgEnum('sync_job_type', [
   'pull_booking_revision',
   'create_channex_property',
   'update_channex_mapping',
+  // Full Sync: 500-day availability + rates/restrictions for one property
+  // in 2 Channex calls (going-live / recovery; PMS-certification step).
+  'full_sync',
 ]);
 
 export const syncJobStatusEnum = pgEnum('sync_job_status', [

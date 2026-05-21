@@ -34,3 +34,24 @@ export function envelope<T extends z.ZodTypeAny>(data: T) {
 
 /** YYYY-MM-DD strings — Channex returns dates this way. */
 export const ISODate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * ARI write response. POST /availability and POST /restrictions return a
+ * task envelope: { data: [{ id, type: 'task' }], meta: { message } }.
+ * The `id` is the async-processing task id Channex generates — needed for
+ * the PMS-certification "full sync" step.
+ */
+export const TaskResponse = z.object({
+  data: z
+    .array(z.object({ id: z.string(), type: z.string().optional() }))
+    .optional(),
+  meta: z.record(z.unknown()).optional(),
+});
+
+/** Extract the Channex task id(s) from an ARI write response (empty if none). */
+export function parseTaskIds(response: unknown): string[] {
+  const parsed = TaskResponse.safeParse(response);
+  return parsed.success && parsed.data.data
+    ? parsed.data.data.map((t) => t.id)
+    : [];
+}

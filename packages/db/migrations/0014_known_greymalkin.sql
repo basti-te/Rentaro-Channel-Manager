@@ -1,0 +1,1 @@
+ALTER TYPE "public"."sync_job_type" ADD VALUE 'full_sync';

@@ -1,5 +1,6 @@
 import type { ChannexHttpClient } from '../client';
 import { RestrictionUpdate } from '../schemas/restriction';
+import { parseTaskIds } from '../schemas/common';
 
 /**
  * Bulk-update rates and restrictions. Same batching philosophy as
@@ -19,14 +20,15 @@ export class RestrictionsAPI {
    *       rate: 8000, min_stay: 2 },
    *   ]);
    */
-  async push(updates: RestrictionUpdate[]): Promise<unknown> {
-    if (updates.length === 0) return null;
+  async push(updates: RestrictionUpdate[]): Promise<string[]> {
+    if (updates.length === 0) return [];
     const validated = updates.map((u) => RestrictionUpdate.parse(u));
-    return this.http.request({
+    const res = await this.http.request({
       method: 'POST',
       path: '/restrictions',
       body: { values: validated },
       retries: 3,
     });
+    return parseTaskIds(res);
   }
 }
