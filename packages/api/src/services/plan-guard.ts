@@ -37,6 +37,12 @@ export interface AccessState {
    * both have reason 'trialing'.
    */
   subscribed: boolean;
+  /**
+   * Set when the subscription is scheduled to cancel at period end (the
+   * tenant cancelled via the Customer Portal but still has access until
+   * this date). `null` for an open-ended subscription.
+   */
+  cancelAt: Date | null;
 }
 
 /**
@@ -58,13 +64,13 @@ export async function resolveAccess(
   if (!t) {
     return {
       ok: false, reason: 'no_subscription', trialEndsAt: null,
-      status: null, subscribed: false,
+      status: null, subscribed: false, cancelAt: null,
     };
   }
   if (t.billingExempt) {
     return {
       ok: true, reason: 'exempt', trialEndsAt: null,
-      status: null, subscribed: false,
+      status: null, subscribed: false, cancelAt: null,
     };
   }
 
@@ -80,20 +86,21 @@ export async function resolveAccess(
   if (!s) {
     return {
       ok: false, reason: 'no_subscription', trialEndsAt: null,
-      status: null, subscribed: false,
+      status: null, subscribed: false, cancelAt: null,
     };
   }
   const trialEndsAt = s.trialEndsAt ?? null;
   const subscribed = !!s.stripeSubscriptionId;
+  const cancelAt = s.cancelAt ?? null;
 
   if (s.status === 'active') {
-    return { ok: true, reason: 'active', trialEndsAt, status: s.status, subscribed };
+    return { ok: true, reason: 'active', trialEndsAt, status: s.status, subscribed, cancelAt };
   }
   if (s.status === 'trialing') {
     if (!trialEndsAt || trialEndsAt > new Date()) {
-      return { ok: true, reason: 'trialing', trialEndsAt, status: s.status, subscribed };
+      return { ok: true, reason: 'trialing', trialEndsAt, status: s.status, subscribed, cancelAt };
     }
-    return { ok: false, reason: 'trial_expired', trialEndsAt, status: s.status, subscribed };
+    return { ok: false, reason: 'trial_expired', trialEndsAt, status: s.status, subscribed, cancelAt };
   }
   return {
     ok: false,
@@ -101,6 +108,7 @@ export async function resolveAccess(
     trialEndsAt,
     status: s.status,
     subscribed,
+    cancelAt,
   };
 }
 

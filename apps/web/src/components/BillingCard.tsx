@@ -34,6 +34,15 @@ function daysFromNow(d: Date | string | null | undefined): number {
   return Math.max(1, Math.ceil(ms / 86_400_000));
 }
 
+function fmtDate(d: Date | string | null | undefined): string {
+  if (!d) return '';
+  return new Date(d).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
 export function BillingCard({ context }: { context: 'settings' | 'lockout' }) {
   const planQ = trpc.billing.currentPlan.useQuery();
   const plansQ = trpc.billing.plans.useQuery();
@@ -76,6 +85,7 @@ export function BillingCard({ context }: { context: 'settings' | 'lockout' }) {
 
   const subscribed = p.subscribed;
   const isLocked = !p.ok;
+  const cancelled = !!p.cancelAt;
   const trialDays = p.reason === 'trialing' ? daysFromNow(p.trialEndsAt) : 0;
   const stripeReady = (plansQ.data?.length ?? 0) > 0;
 
@@ -85,13 +95,20 @@ export function BillingCard({ context }: { context: 'settings' | 'lockout' }) {
   // Customer Portal: once there is a real subscription to manage.
   const showPortal = subscribed;
 
-  // "trialing" splits in two — not-yet-subscribed vs subscribed-in-trial.
-  const headline =
-    p.reason === 'trialing' && subscribed
-      ? 'Abonnement abgeschlossen — Probezeit läuft'
-      : meta.de;
-  const tone: 'ok' | 'warn' | 'block' =
-    p.reason === 'trialing' && subscribed ? 'ok' : meta.tone;
+  // Headline. A scheduled cancellation (still inside the paid window)
+  // takes precedence over the generic "subscribed in trial" label.
+  let headline: string;
+  let tone: 'ok' | 'warn' | 'block';
+  if (cancelled && p.ok) {
+    headline = 'Abonnement gekündigt';
+    tone = 'warn';
+  } else if (p.reason === 'trialing' && subscribed) {
+    headline = 'Abonnement abgeschlossen — Probezeit läuft';
+    tone = 'ok';
+  } else {
+    headline = meta.de;
+    tone = meta.tone;
+  }
 
   return (
     <Card className={cn('px-5 py-4', context === 'lockout' && 'border-negative/40')}>
@@ -117,7 +134,13 @@ export function BillingCard({ context }: { context: 'settings' | 'lockout' }) {
             {context === 'lockout' ? 'Abonnement erforderlich' : 'Abrechnung'}
           </h2>
           <p className="text-[12.5px] text-muted mt-0.5">{headline}</p>
-          {p.reason === 'trialing' && trialDays > 0 && (
+          {cancelled && p.ok ? (
+            <p className="text-[12.5px] text-ink-soft mt-1">
+              Dein Zugang bleibt bis{' '}
+              <span className="font-medium">{fmtDate(p.cancelAt)}</span> aktiv.
+              Über das Kundenportal kannst du die Kündigung rückgängig machen.
+            </p>
+          ) : p.reason === 'trialing' && trialDays > 0 ? (
             <p className="text-[12.5px] text-ink-soft mt-1">
               Noch <span className="num font-medium">{trialDays}</span>{' '}
               {trialDays === 1 ? 'Tag' : 'Tage'} Probezeit
@@ -125,7 +148,7 @@ export function BillingCard({ context }: { context: 'settings' | 'lockout' }) {
                 ? ' — danach wird dein Abo automatisch abgerechnet.'
                 : ` von ${p.trialDaysTotal} — wähle ein Abo, um Rentaro nahtlos weiterzunutzen.`}
             </p>
-          )}
+          ) : null}
         </div>
       </div>
 
