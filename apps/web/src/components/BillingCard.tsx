@@ -74,8 +74,24 @@ export function BillingCard({ context }: { context: 'settings' | 'lockout' }) {
     );
   }
 
-  const trialDays = p.reason === 'trialing' ? daysFromNow(p.trialEndsAt) : 0;
+  const subscribed = p.subscribed;
   const isLocked = !p.ok;
+  const trialDays = p.reason === 'trialing' ? daysFromNow(p.trialEndsAt) : 0;
+  const stripeReady = (plansQ.data?.length ?? 0) > 0;
+
+  // Plan picker: only while the tenant still needs to (re)subscribe.
+  // Once subscribed (trial or active) plan changes go through the Portal.
+  const showPlanPicker = stripeReady && (!subscribed || isLocked);
+  // Customer Portal: once there is a real subscription to manage.
+  const showPortal = subscribed;
+
+  // "trialing" splits in two — not-yet-subscribed vs subscribed-in-trial.
+  const headline =
+    p.reason === 'trialing' && subscribed
+      ? 'Abonnement abgeschlossen — Probezeit läuft'
+      : meta.de;
+  const tone: 'ok' | 'warn' | 'block' =
+    p.reason === 'trialing' && subscribed ? 'ok' : meta.tone;
 
   return (
     <Card className={cn('px-5 py-4', context === 'lockout' && 'border-negative/40')}>
@@ -83,14 +99,14 @@ export function BillingCard({ context }: { context: 'settings' | 'lockout' }) {
         <div
           className={cn(
             'h-9 w-9 rounded-md flex items-center justify-center flex-shrink-0',
-            meta.tone === 'ok'
+            tone === 'ok'
               ? 'bg-brand-soft text-brand'
-              : meta.tone === 'warn'
+              : tone === 'warn'
                 ? 'bg-warning-soft text-warning'
                 : 'bg-negative-soft text-negative',
           )}
         >
-          {meta.tone === 'ok' ? (
+          {tone === 'ok' ? (
             <CheckCircle2 className="h-4.5 w-4.5" strokeWidth={1.75} />
           ) : (
             <AlertCircle className="h-4.5 w-4.5" strokeWidth={1.75} />
@@ -100,19 +116,20 @@ export function BillingCard({ context }: { context: 'settings' | 'lockout' }) {
           <h2 className="display text-[16px] font-medium text-ink">
             {context === 'lockout' ? 'Abonnement erforderlich' : 'Abrechnung'}
           </h2>
-          <p className="text-[12.5px] text-muted mt-0.5">{meta.de}</p>
+          <p className="text-[12.5px] text-muted mt-0.5">{headline}</p>
           {p.reason === 'trialing' && trialDays > 0 && (
             <p className="text-[12.5px] text-ink-soft mt-1">
               Noch <span className="num font-medium">{trialDays}</span>{' '}
-              {trialDays === 1 ? 'Tag' : 'Tage'} von {p.trialDaysTotal} — du
-              kannst jederzeit ein Abo wählen, um es nahtlos weiterzunutzen.
+              {trialDays === 1 ? 'Tag' : 'Tage'} Probezeit
+              {subscribed
+                ? ' — danach wird dein Abo automatisch abgerechnet.'
+                : ` von ${p.trialDaysTotal} — wähle ein Abo, um Rentaro nahtlos weiterzunutzen.`}
             </p>
           )}
         </div>
       </div>
 
-      {/* Plan picker — shown during trial, active (for switching), and lockout */}
-      {(plansQ.data?.length ?? 0) > 0 && (
+      {showPlanPicker && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
           {plansQ.data!.map((opt) => (
             <button
@@ -141,19 +158,19 @@ export function BillingCard({ context }: { context: 'settings' | 'lockout' }) {
         </div>
       )}
 
-      {(plansQ.data?.length ?? 0) === 0 && (
+      {!stripeReady && !subscribed && (
         <div className="rounded-md border border-line px-3 py-2 text-[12px] text-muted mb-3">
-          Stripe ist noch nicht eingerichtet (Preis-IDs fehlen in <span className="num">.env.local</span>).
+          Stripe ist noch nicht eingerichtet (Preis-IDs fehlen).
         </div>
       )}
 
       <div className="flex items-center justify-between gap-3 flex-wrap pt-1 border-t border-line/60 mt-1">
         <div className="text-[11.5px] text-whisper">
-          {p.hasStripeCustomer
-            ? 'Rechnungen, Karte, Plan-Wechsel über das Kundenportal.'
-            : 'Nach dem ersten Checkout erscheint hier das Kundenportal.'}
+          {showPortal
+            ? 'Rechnungen, Karte und Plan-Wechsel über das Kundenportal.'
+            : 'Nach dem Abschluss erscheint hier das Kundenportal.'}
         </div>
-        {p.hasStripeCustomer && (
+        {showPortal && (
           <Button
             size="sm"
             variant="secondary"

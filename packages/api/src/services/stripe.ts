@@ -248,13 +248,27 @@ export async function syncSubscriptionFromStripe(
   // One product tier today — all subscribers map to 'starter'.
   const planLabel = 'starter' as const;
 
-  const existing = (
+  // Find the row to update: prefer the one already linked to this Stripe
+  // subscription; otherwise adopt the tenant's existing (onboarding-trial)
+  // row — keeps exactly ONE subscriptions row per tenant instead of
+  // accumulating a fresh row on every first checkout.
+  let existing = (
     await db
       .select({ id: subscriptions.id })
       .from(subscriptions)
       .where(eq(subscriptions.stripeSubscriptionId, s.id))
       .limit(1)
   )[0];
+  if (!existing) {
+    existing = (
+      await db
+        .select({ id: subscriptions.id })
+        .from(subscriptions)
+        .where(eq(subscriptions.tenantId, tenantId))
+        .orderBy(desc(subscriptions.createdAt))
+        .limit(1)
+    )[0];
+  }
 
   const trialEnd = s.trial_end ? new Date(s.trial_end * 1000) : null;
   // In Stripe API 2025+, current_period_{start,end} live on each item.
@@ -279,6 +293,7 @@ export async function syncSubscriptionFromStripe(
       | 'canceled'
       | 'unpaid'
       | 'incomplete',
+    stripeSubscriptionId: s.id,
     stripePriceId: baseItem?.price.id ?? null,
     quantity,
     billingInterval: interval,
@@ -293,11 +308,7 @@ export async function syncSubscriptionFromStripe(
   if (existing) {
     await db.update(subscriptions).set(patch).where(eq(subscriptions.id, existing.id));
   } else {
-    await db.insert(subscriptions).values({
-      tenantId,
-      stripeSubscriptionId: s.id,
-      ...patch,
-    });
+    await db.insert(subscriptions).values({ tenantId, ...patch });
   }
 
   // Mirror the effective plan/status onto the tenant row for fast reads.

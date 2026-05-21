@@ -30,6 +30,13 @@ export interface AccessState {
   reason: AccessReason;
   trialEndsAt: Date | null;
   status: string | null;
+  /**
+   * True once the tenant has a real Stripe subscription attached (i.e. they
+   * completed checkout). Distinguishes "trial, not yet subscribed" from
+   * "subscribed, still inside the trial window" — the UI needs this since
+   * both have reason 'trialing'.
+   */
+  subscribed: boolean;
 }
 
 /**
@@ -49,10 +56,16 @@ export async function resolveAccess(
       .limit(1)
   )[0];
   if (!t) {
-    return { ok: false, reason: 'no_subscription', trialEndsAt: null, status: null };
+    return {
+      ok: false, reason: 'no_subscription', trialEndsAt: null,
+      status: null, subscribed: false,
+    };
   }
   if (t.billingExempt) {
-    return { ok: true, reason: 'exempt', trialEndsAt: null, status: null };
+    return {
+      ok: true, reason: 'exempt', trialEndsAt: null,
+      status: null, subscribed: false,
+    };
   }
 
   const s = (
@@ -65,24 +78,29 @@ export async function resolveAccess(
   )[0];
 
   if (!s) {
-    return { ok: false, reason: 'no_subscription', trialEndsAt: null, status: null };
+    return {
+      ok: false, reason: 'no_subscription', trialEndsAt: null,
+      status: null, subscribed: false,
+    };
   }
   const trialEndsAt = s.trialEndsAt ?? null;
+  const subscribed = !!s.stripeSubscriptionId;
 
   if (s.status === 'active') {
-    return { ok: true, reason: 'active', trialEndsAt, status: s.status };
+    return { ok: true, reason: 'active', trialEndsAt, status: s.status, subscribed };
   }
   if (s.status === 'trialing') {
     if (!trialEndsAt || trialEndsAt > new Date()) {
-      return { ok: true, reason: 'trialing', trialEndsAt, status: s.status };
+      return { ok: true, reason: 'trialing', trialEndsAt, status: s.status, subscribed };
     }
-    return { ok: false, reason: 'trial_expired', trialEndsAt, status: s.status };
+    return { ok: false, reason: 'trial_expired', trialEndsAt, status: s.status, subscribed };
   }
   return {
     ok: false,
     reason: (s.status as AccessReason) ?? 'no_subscription',
     trialEndsAt,
     status: s.status,
+    subscribed,
   };
 }
 
