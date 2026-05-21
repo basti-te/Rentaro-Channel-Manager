@@ -5,9 +5,34 @@ import { Card, CardBody } from '../components/ui/Card';
 import { PageHeader } from './_dashboard';
 import { trpc } from '../lib/trpc';
 
+/** Local YYYY-MM-DD (no UTC shift). */
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
+}
+
 export function OverviewPage() {
   const propsQ = trpc.properties.list.useQuery();
-  const groupsQ = trpc.propertyGroups.list.useQuery();
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const bookingsQ = trpc.bookings.listByRange.useQuery({
+    from: isoDate(monthStart),
+    to: isoDate(monthEnd),
+  });
+
+  const apartments = propsQ.data?.length ?? null;
+  const connected = propsQ.data
+    ? propsQ.data.filter((p) => !!p.channexPropertyRef).length
+    : null;
+  const monthKey = isoDate(now).slice(0, 7);
+  const arrivalsThisMonth = bookingsQ.data
+    ? bookingsQ.data.filter(
+        (b) => b.source !== 'block' && b.checkin.slice(0, 7) === monthKey,
+      ).length
+    : null;
 
   return (
     <>
@@ -20,20 +45,25 @@ export function OverviewPage() {
           <StatCard
             icon={Building2}
             label="Apartments"
-            value={propsQ.data?.length ?? '—'}
+            value={apartments ?? '—'}
             href="/apartments"
           />
           <StatCard
             icon={Plug}
-            label="Channels connected"
-            value="0"
-            note="Configure in Phase 7"
+            label="Connected to Channex"
+            value={connected ?? '—'}
+            note={
+              apartments != null && apartments > 0
+                ? `of ${apartments} apartment${apartments === 1 ? '' : 's'}`
+                : undefined
+            }
+            href="/apartments"
           />
           <StatCard
             icon={Calendar}
-            label="Bookings this month"
-            value="—"
-            note="Available in Phase 6"
+            label="Arrivals this month"
+            value={arrivalsThisMonth ?? '—'}
+            href="/calendar"
           />
         </div>
 
@@ -64,24 +94,6 @@ export function OverviewPage() {
             </CardBody>
           </Card>
         )}
-
-        {/* Phase progress note */}
-        <Card>
-          <CardBody>
-            <div className="text-[11px] uppercase tracking-widest text-whisper mb-2">
-              Build status
-            </div>
-            <div className="text-[14px] text-ink-soft leading-relaxed">
-              Foundation and apartments are live (Phase 1).
-              The calendar arrives in Phase 2; Channex sync in Phase 5;
-              messaging in Phase 8.
-            </div>
-            <div className="mt-3 text-[12px] num text-muted">
-              Groups: {groupsQ.data?.length ?? '—'} · Apartments:{' '}
-              {propsQ.data?.length ?? '—'}
-            </div>
-          </CardBody>
-        </Card>
       </div>
     </>
   );
