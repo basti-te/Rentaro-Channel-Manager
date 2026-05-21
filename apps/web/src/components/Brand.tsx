@@ -1,9 +1,8 @@
 import { cn } from '@cm/ui';
 
 /**
- * Wordmark — sets in Fraunces with a small terracotta paper-stamp dot.
- * "CM" because the working title is `channel-manager`; replace with brand
- * once the product has a real name.
+ * Wordmark — "Rentaro" set in Fraunces with a small terracotta
+ * paper-stamp dot.
  */
 export function Brand({
   className,
@@ -43,7 +42,7 @@ export function Brand({
           )}
           style={{ fontVariationSettings: "'opsz' 14, 'SOFT' 30" }}
         >
-          ChannelManager
+          Rentaro
         </span>
       )}
     </div>
