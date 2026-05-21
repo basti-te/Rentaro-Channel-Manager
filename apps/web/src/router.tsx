@@ -8,6 +8,7 @@ import {
 import { RootLayout } from './routes/__root';
 import { LoginPage } from './routes/login';
 import { ImpressumPage } from './routes/impressum';
+import { DatenschutzPage } from './routes/datenschutz';
 import { DashboardLayout } from './routes/_dashboard';
 import { OverviewPage } from './routes/overview';
 import { ApartmentsPage } from './routes/apartments';
@@ -36,6 +37,13 @@ const impressumRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/impressum',
   component: ImpressumPage,
+});
+
+/** Public — privacy policy, reachable without authentication. */
+const datenschutzRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/datenschutz',
+  component: DatenschutzPage,
 });
 
 const dashboardRoute = createRoute({
@@ -89,6 +97,7 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   loginRoute,
   impressumRoute,
+  datenschutzRoute,
   dashboardRoute.addChildren([
     overviewRoute,
     apartmentsRoute,

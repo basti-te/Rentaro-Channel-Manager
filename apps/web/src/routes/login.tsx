@@ -112,12 +112,18 @@ export function LoginPage() {
         <p className="mt-8 text-center text-[12px] text-whisper">
           By signing in you agree to our terms and privacy policy.
         </p>
-        <p className="mt-2 text-center text-[12px]">
+        <p className="mt-2 text-center text-[12px] flex justify-center gap-4">
           <Link
             to="/impressum"
             className="text-muted hover:text-ink transition-colors"
           >
             Impressum
+          </Link>
+          <Link
+            to="/datenschutz"
+            className="text-muted hover:text-ink transition-colors"
+          >
+            Datenschutz
           </Link>
         </p>
       </div>
