@@ -17,7 +17,7 @@ export function Brand({
   const badge = {
     sm: 'h-6 w-6 rounded-md',
     md: 'h-7 w-7 rounded-md',
-    lg: 'h-9 w-9 rounded-lg',
+    lg: 'h-14 w-14 rounded-xl',
   }[size];
   const text = {
     sm: 'text-[15px]',
@@ -30,8 +30,8 @@ export function Brand({
       <img
         src="/logo.png"
         alt="Rentaro"
-        width={36}
-        height={36}
+        width={64}
+        height={64}
         className={cn('object-cover ring-1 ring-black/5', badge)}
         style={{ boxShadow: '0 1px 3px rgba(13,26,43,0.22)' }}
       />
