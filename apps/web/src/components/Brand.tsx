@@ -1,8 +1,9 @@
 import { cn } from '@cm/ui';
 
 /**
- * Wordmark — "Rentaro" set in Fraunces with a small terracotta
- * paper-stamp dot.
+ * Brand lockup — the Rentaro "R" mark as a rounded-square badge next to
+ * the "Rentaro" wordmark (Fraunces). The logo asset lives in
+ * apps/web/public/logo.png and is also the favicon.
  */
 export function Brand({
   className,
@@ -13,10 +14,10 @@ export function Brand({
   showText?: boolean;
   size?: 'sm' | 'md' | 'lg';
 }) {
-  const dot = {
-    sm: 'h-2 w-2',
-    md: 'h-2.5 w-2.5',
-    lg: 'h-3 w-3',
+  const badge = {
+    sm: 'h-6 w-6 rounded-md',
+    md: 'h-7 w-7 rounded-md',
+    lg: 'h-9 w-9 rounded-lg',
   }[size];
   const text = {
     sm: 'text-[15px]',
@@ -26,13 +27,13 @@ export function Brand({
 
   return (
     <div className={cn('inline-flex items-center gap-2.5', className)}>
-      <span
-        aria-hidden
-        className={cn('rounded-[2px] bg-brand', dot)}
-        style={{
-          boxShadow:
-            '0 1px 0 rgba(255,255,255,0.4) inset, 0 1px 2px rgba(176,67,28,0.3)',
-        }}
+      <img
+        src="/logo.png"
+        alt="Rentaro"
+        width={36}
+        height={36}
+        className={cn('object-cover ring-1 ring-black/5', badge)}
+        style={{ boxShadow: '0 1px 3px rgba(13,26,43,0.22)' }}
       />
       {showText && (
         <span
