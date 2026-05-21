@@ -7,6 +7,7 @@ import {
 
 import { RootLayout } from './routes/__root';
 import { LoginPage } from './routes/login';
+import { ImpressumPage } from './routes/impressum';
 import { DashboardLayout } from './routes/_dashboard';
 import { OverviewPage } from './routes/overview';
 import { ApartmentsPage } from './routes/apartments';
@@ -28,6 +29,13 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: LoginPage,
+});
+
+/** Public — legal notice, reachable without authentication. */
+const impressumRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/impressum',
+  component: ImpressumPage,
 });
 
 const dashboardRoute = createRoute({
@@ -80,6 +88,7 @@ const settingsRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
+  impressumRoute,
   dashboardRoute.addChildren([
     overviewRoute,
     apartmentsRoute,

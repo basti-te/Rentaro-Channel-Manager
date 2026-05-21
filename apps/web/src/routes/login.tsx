@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { Mail, ArrowRight } from 'lucide-react';
 
@@ -111,6 +111,14 @@ export function LoginPage() {
         {/* Footer */}
         <p className="mt-8 text-center text-[12px] text-whisper">
           By signing in you agree to our terms and privacy policy.
+        </p>
+        <p className="mt-2 text-center text-[12px]">
+          <Link
+            to="/impressum"
+            className="text-muted hover:text-ink transition-colors"
+          >
+            Impressum
+          </Link>
         </p>
       </div>
     </div>
