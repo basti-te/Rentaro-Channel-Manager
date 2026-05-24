@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import {
   Check,
@@ -8,6 +8,10 @@ import {
   FlaskConical,
   RefreshCw,
   Copy,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@cm/api';
@@ -218,8 +222,48 @@ function PropertyRowItem({
     },
     onError: (e) => toast.error(e.message),
   });
+  const renameMut = trpc.properties.update.useMutation({
+    onSuccess: () => {
+      toast.success(`${property.name} umbenannt`);
+      void utils.properties.list.invalidate();
+      setShowRename(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteMut = trpc.properties.delete.useMutation({
+    onSuccess: () => {
+      toast.success(`${property.name} gelöscht`);
+      void utils.properties.list.invalidate();
+      setShowDelete(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const [showSimulate, setShowSimulate] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showRename, setShowRename] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close kebab dropdown on outside click or ESC.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onDoc(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
   const connected = !!property.channexPropertyRef;
   // Only offer the simulator where Channex will actually accept a CRS
   // booking (property has a CRS app connected). Avoids a confusing 403.
@@ -316,6 +360,59 @@ function PropertyRowItem({
               Verbinden
             </Button>
           )}
+
+          {/* Kebab menu — rename / delete. Available regardless of connection. */}
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((o) => !o)}
+              className={cn(
+                'inline-flex items-center justify-center h-7 w-7 rounded-md',
+                'text-muted hover:text-ink hover:bg-sunken transition-colors',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+              )}
+              aria-label={`Aktionen für ${property.name}`}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
+              <MoreVertical className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+            {menuOpen && (
+              <div
+                role="menu"
+                className={cn(
+                  'absolute right-0 top-full mt-1 z-20 min-w-[160px]',
+                  'rounded-lg border border-line bg-surface shadow-lg',
+                  'py-1 animate-fade-up',
+                )}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setShowRename(true);
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-ink hover:bg-sunken text-left"
+                >
+                  <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Umbenennen
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setShowDelete(true);
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-danger hover:bg-danger-soft text-left"
+                >
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Löschen
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -334,7 +431,196 @@ function PropertyRowItem({
           onClose={() => setShowSimulate(false)}
         />
       )}
+
+      {showRename && (
+        <RenameApartmentDialog
+          currentName={property.name}
+          pending={renameMut.isPending}
+          onClose={() => setShowRename(false)}
+          onSubmit={(name) => renameMut.mutate({ id: property.id, name })}
+        />
+      )}
+
+      {showDelete && (
+        <DeleteApartmentDialog
+          name={property.name}
+          connected={connected}
+          pending={deleteMut.isPending}
+          onClose={() => setShowDelete(false)}
+          onConfirm={() => deleteMut.mutate({ id: property.id })}
+        />
+      )}
     </li>
+  );
+}
+
+/**
+ * Simple rename modal — only the apartment name. Channex side is left as-is
+ * (rename there is rare and we don't want to surprise users with a Channex
+ * call from a UI label change).
+ */
+function RenameApartmentDialog({
+  currentName,
+  pending,
+  onClose,
+  onSubmit,
+}: {
+  currentName: string;
+  pending: boolean;
+  onClose: () => void;
+  onSubmit: (name: string) => void;
+}) {
+  const [name, setName] = useState(currentName);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const trimmed = name.trim();
+  const valid = trimmed.length >= 1 && trimmed.length <= 80;
+  const changed = trimmed !== currentName.trim();
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!valid || !changed) return;
+    onSubmit(trimmed);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:px-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
+      <div
+        className="relative w-full sm:max-w-[420px] bg-surface rounded-t-2xl sm:rounded-xl shadow-lg border border-line animate-fade-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 pt-6 pb-2">
+          <div className="flex items-center gap-2">
+            <Pencil className="h-4 w-4 text-brand" strokeWidth={1.75} />
+            <h2 className="display text-[20px] font-medium text-ink">Umbenennen</h2>
+          </div>
+          <p className="mt-1 text-[12.5px] text-muted">
+            Nur die Anzeige in Rentaro wird geändert. Der Name in Channex bleibt unverändert.
+          </p>
+        </div>
+        <form onSubmit={submit} className="px-6 pb-6 pt-4 space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="rename-name">Name</Label>
+            <Input
+              id="rename-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={80}
+              autoFocus
+              invalid={!valid}
+            />
+          </div>
+          {!valid && (
+            <p className="text-[12px] text-negative">
+              Name muss zwischen 1 und 80 Zeichen lang sein.
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
+              Abbrechen
+            </Button>
+            <Button
+              type="submit"
+              variant="brand"
+              loading={pending}
+              disabled={!valid || !changed || pending}
+            >
+              Speichern
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Confirmation modal for destructive delete. Cascade rules in the schema
+ * (`onDelete: 'cascade'` on the child tables) handle the cleanup of bookings,
+ * rate overrides, ari_pending entries, messages, channex_properties etc.
+ * Channex itself has no property-delete API, so the upstream record stays.
+ */
+function DeleteApartmentDialog({
+  name,
+  connected,
+  pending,
+  onClose,
+  onConfirm,
+}: {
+  name: string;
+  connected: boolean;
+  pending: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:px-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
+      <div
+        className="relative w-full sm:max-w-[460px] bg-surface rounded-t-2xl sm:rounded-xl shadow-lg border border-line animate-fade-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 pt-6 pb-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-danger" strokeWidth={1.75} />
+            <h2 className="display text-[20px] font-medium text-ink">
+              Apartment löschen
+            </h2>
+          </div>
+          <p className="mt-3 text-[13px] text-ink">
+            Möchtest du <span className="font-medium">{name}</span> wirklich löschen?
+          </p>
+          <ul className="mt-2 text-[12.5px] text-muted space-y-1 list-disc list-inside">
+            <li>Alle Buchungen, Blöcke und Rate-Overrides werden mitgelöscht.</li>
+            <li>Cleaning-Regeln und Sync-Verlauf für dieses Apartment werden entfernt.</li>
+            {connected && (
+              <li>
+                Die Channex-Verknüpfung wird gelöst. Das Apartment in Channex selbst
+                bleibt bestehen — dort musst du es ggf. separat archivieren.
+              </li>
+            )}
+            <li>Diese Aktion kann nicht rückgängig gemacht werden.</li>
+          </ul>
+        </div>
+        <div className="px-6 pb-6 pt-4 flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
+            Abbrechen
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            loading={pending}
+            disabled={pending}
+            onClick={onConfirm}
+            iconLeft={<Trash2 className="h-3.5 w-3.5" />}
+          >
+            Endgültig löschen
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
