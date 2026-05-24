@@ -17,70 +17,19 @@ import { Card } from '../components/ui/Card';
 import { Skeleton } from '../components/ui/Skeleton';
 import { trpc } from '../lib/trpc';
 
+import {
+  CURRENCY_FALLBACK,
+  TIMEZONE_FALLBACK,
+  currencyName,
+  intlSupported,
+  withPreferred,
+} from '../lib/locale-options';
+
 const SELECT_CLS =
   'h-10 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none transition-colors disabled:opacity-60';
 
-/** Full IANA / ISO-4217 lists via Intl, with a tiny fallback. */
-function intlValues(kind: 'timeZone' | 'currency', fallback: string[]): string[] {
-  const fn = (Intl as unknown as {
-    supportedValuesOf?: (k: string) => string[];
-  }).supportedValuesOf;
-  try {
-    const v = fn?.(kind);
-    return v && v.length > 0 ? v : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-const TZ_FALLBACK = [
-  'Europe/Berlin',
-  'Europe/Vienna',
-  'Europe/Zurich',
-  'Europe/London',
-  'Europe/Madrid',
-  'UTC',
-];
-const CUR_FALLBACK = ['EUR', 'USD', 'GBP', 'CHF'];
-
-/**
- * Pin a preferred default (Berlin / EUR) to the top, keep the saved value
- * selectable, then the full alphabetical list — deduplicated.
- */
-function withPreferred(
-  list: string[],
-  preferred: string,
-  current: string,
-): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const v of [preferred, current, ...list]) {
-    if (!seen.has(v)) {
-      seen.add(v);
-      out.push(v);
-    }
-  }
-  return out;
-}
-
 const DEFAULT_TZ = 'Europe/Berlin';
 const DEFAULT_CURRENCY = 'EUR';
-
-const currencyName = (() => {
-  try {
-    const dn = new Intl.DisplayNames(['de'], { type: 'currency' });
-    return (code: string) => {
-      try {
-        const n = dn.of(code);
-        return n && n !== code ? `${code} — ${n}` : code;
-      } catch {
-        return code;
-      }
-    };
-  } catch {
-    return (code: string) => code;
-  }
-})();
 
 export function SettingsPage() {
   const utils = trpc.useUtils();
@@ -175,7 +124,7 @@ function GeneralSection({
   const tzOptions = useMemo(
     () =>
       withPreferred(
-        intlValues('timeZone', TZ_FALLBACK),
+        intlSupported('timeZone', TIMEZONE_FALLBACK),
         DEFAULT_TZ,
         data.defaultTimezone,
       ),
@@ -184,7 +133,7 @@ function GeneralSection({
   const curOptions = useMemo(
     () =>
       withPreferred(
-        intlValues('currency', CUR_FALLBACK),
+        intlSupported('currency', CURRENCY_FALLBACK),
         DEFAULT_CURRENCY,
         data.defaultCurrency,
       ),

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import {
   Check,
@@ -19,6 +19,12 @@ import { Label } from '../components/ui/Label';
 import { Card, CardBody } from '../components/ui/Card';
 import { Skeleton } from '../components/ui/Skeleton';
 import { PageHeader } from './_dashboard';
+import {
+  CURRENCY_FALLBACK,
+  currencyName,
+  intlSupported,
+  withPreferred,
+} from '../lib/locale-options';
 import { trpc } from '../lib/trpc';
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
@@ -236,8 +242,21 @@ function PropertyRowItem({
           <GripVertical className="h-4 w-4" strokeWidth={1.75} />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="text-[14px] font-medium text-ink truncate">
-            {property.name}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[14px] font-medium text-ink truncate">
+              {property.name}
+            </span>
+            {property.currency && (
+              <span
+                className={cn(
+                  'inline-flex items-center text-[10px] uppercase tracking-wider font-semibold',
+                  'px-1.5 py-0.5 rounded bg-sunken text-muted flex-shrink-0',
+                )}
+                title="Apartment-spezifische Währung (überschreibt den Workspace-Default)"
+              >
+                {property.currency}
+              </span>
+            )}
           </div>
           {property.description && (
             <div className="text-[12px] text-muted truncate mt-0.5">
@@ -602,6 +621,12 @@ function NewApartmentDialog({
 }) {
   const [name, setName] = useState('');
   const [groupId, setGroupId] = useState<string>('');
+  const [currency, setCurrency] = useState<string>('');
+
+  const currencyOptions = useMemo(
+    () => withPreferred(intlSupported('currency', CURRENCY_FALLBACK), 'EUR', currency || 'EUR'),
+    [currency],
+  );
 
   const create = trpc.properties.create.useMutation({
     onSuccess: () => {
@@ -617,6 +642,7 @@ function NewApartmentDialog({
     create.mutate({
       name: name.trim(),
       groupId: groupId || null,
+      currency: currency || undefined,
     });
   }
 
@@ -665,6 +691,26 @@ function NewApartmentDialog({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="apt-currency">Currency</Label>
+            <select
+              id="apt-currency"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="h-10 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none transition-colors"
+            >
+              <option value="">Workspace default</option>
+              {currencyOptions.map((c) => (
+                <option key={c} value={c}>
+                  {currencyName(c)}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-whisper">
+              Leave on workspace default unless this apartment trades in a
+              different currency (e.g. a USD test property).
+            </p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" onClick={onClose}>
