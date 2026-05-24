@@ -49,12 +49,25 @@ export function RateEditorDialog({
   const [minStay, setMinStay] = useState('');
   const [stopSell, setStopSell] = useState(false);
 
+  // Editable date range — initialised from the drag-selection but the user
+  // can widen/narrow it directly in the dialog (handy for very long ranges
+  // like a 500-day full-sync seed where dragging cells is impractical).
+  // Both inputs are *inclusive* — first night and last night. We convert
+  // `lastNight + 1` to the exclusive `to` only when calling the mutation,
+  // because the rates API contract stores `to` as exclusive.
+  const [editFrom, setEditFrom] = useState('');
+  const [editLastNight, setEditLastNight] = useState('');
+
   // Reset fields whenever a fresh selection comes in.
   useEffect(() => {
-    if (open) {
+    if (open && selection) {
       setRate('');
       setMinStay('');
       setStopSell(false);
+      setEditFrom(selection.from);
+      // selection.to is exclusive — display the inclusive last night.
+      const last = addDays(new Date(`${selection.to}T00:00:00`), -1);
+      setEditLastNight(format(last, 'yyyy-MM-dd'));
     }
   }, [open, selection?.propertyId, selection?.from, selection?.to]);
 
@@ -84,16 +97,25 @@ export function RateEditorDialog({
 
   if (!open || !selection) return null;
 
-  const ci = new Date(`${selection.from}T00:00:00`);
-  const nights = Math.max(
-    1,
-    differenceInCalendarDays(new Date(`${selection.to}T00:00:00`), ci),
-  );
-  const lastNight = addDays(ci, nights - 1);
-  const rangeLabel =
-    nights === 1
-      ? format(ci, 'EEE d. MMM yyyy', { locale: de })
-      : `${format(ci, 'd. MMM', { locale: de })} – ${format(lastNight, 'd. MMM yyyy', { locale: de })} · ${nights} Tage`;
+  // Derive the effective range from the editable inputs. Returns null if the
+  // user has cleared one of the inputs or set Last < First.
+  const range = (() => {
+    if (!editFrom || !editLastNight) return null;
+    const f = new Date(`${editFrom}T00:00:00`);
+    const l = new Date(`${editLastNight}T00:00:00`);
+    if (Number.isNaN(f.getTime()) || Number.isNaN(l.getTime())) return null;
+    if (l < f) return null;
+    const nights = differenceInCalendarDays(l, f) + 1;
+    const toExclusive = format(addDays(l, 1), 'yyyy-MM-dd');
+    return { firstNight: f, lastNight: l, from: editFrom, toExclusive, nights };
+  })();
+
+  const rangeValid = range != null;
+  const rangeLabel = range
+    ? range.nights === 1
+      ? format(range.firstNight, 'EEE d. MMM yyyy', { locale: de })
+      : `${format(range.firstNight, 'd. MMM', { locale: de })} – ${format(range.lastNight, 'd. MMM yyyy', { locale: de })} · ${range.nights} Tage`
+    : 'Zeitraum wählen';
 
   const rateNum = rate.trim() === '' ? null : Number(rate.replace(',', '.'));
   const rateValid = rateNum == null || (Number.isFinite(rateNum) && rateNum >= 0);
@@ -104,17 +126,30 @@ export function RateEditorDialog({
   const hasChange = rateNum != null || minStayNum != null || stopSell;
   const pending = setOverrides.isPending || clearOverrides.isPending;
 
+  // Quick presets: set Last Night = First + N - 1. Disabled until First is set.
+  const presets: Array<{ label: string; days: number }> = [
+    { label: '+30 T', days: 30 },
+    { label: '+90 T', days: 90 },
+    { label: '+1 J', days: 365 },
+    { label: '500 T', days: 500 },
+  ];
+  function applyPreset(days: number) {
+    if (!editFrom) return;
+    const f = new Date(`${editFrom}T00:00:00`);
+    setEditLastNight(format(addDays(f, days - 1), 'yyyy-MM-dd'));
+  }
+
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (!selection || !rateValid || !minStayValid || !hasChange) return;
+    if (!selection || !range || !rateValid || !minStayValid || !hasChange) return;
     const values: Record<string, number | boolean> = {};
     if (rateNum != null) values.rateCents = Math.round(rateNum * 100);
     if (minStayNum != null) values.minStay = minStayNum;
     if (stopSell) values.stopSell = true;
     setOverrides.mutate({
       propertyId: selection.propertyId,
-      from: selection.from,
-      to: selection.to,
+      from: range.from,
+      to: range.toExclusive,
       values,
     });
   }
@@ -144,6 +179,48 @@ export function RateEditorDialog({
         </div>
 
         <form onSubmit={submit} className="px-6 pb-6 pt-4 space-y-4">
+          {/* Editable date range — drag-selection seeds these but the user
+              can fine-tune (or stretch to 500 days for a full sync). */}
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="ro-from">Erste Nacht</Label>
+                <Input
+                  id="ro-from"
+                  type="date"
+                  value={editFrom}
+                  onChange={(e) => setEditFrom(e.target.value)}
+                  invalid={!rangeValid}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ro-last">Letzte Nacht</Label>
+                <Input
+                  id="ro-last"
+                  type="date"
+                  value={editLastNight}
+                  min={editFrom || undefined}
+                  onChange={(e) => setEditLastNight(e.target.value)}
+                  invalid={!rangeValid}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] text-muted">Schnellwahl ab erster Nacht:</span>
+              {presets.map(({ label, days }) => (
+                <button
+                  key={days}
+                  type="button"
+                  disabled={!editFrom}
+                  onClick={() => applyPreset(days)}
+                  className="text-[11px] px-1.5 py-0.5 rounded border border-line text-muted hover:bg-sunken hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="ro-rate">Preis / Nacht ({symbol})</Label>
@@ -179,6 +256,11 @@ export function RateEditorDialog({
             <Switch checked={stopSell} onChange={setStopSell} />
           </div>
 
+          {!rangeValid && (
+            <p className="text-[12px] text-negative">
+              Bitte erste und letzte Nacht wählen (Letzte ≥ Erste).
+            </p>
+          )}
           {!rateValid && (
             <p className="text-[12px] text-negative">Ungültiger Preis.</p>
           )}
@@ -193,13 +275,13 @@ export function RateEditorDialog({
               type="button"
               variant="ghost"
               size="sm"
-              disabled={pending}
+              disabled={pending || !range}
               onClick={() =>
-                selection &&
+                range &&
                 clearOverrides.mutate({
                   propertyId: selection.propertyId,
-                  from: selection.from,
-                  to: selection.to,
+                  from: range.from,
+                  to: range.toExclusive,
                 })
               }
             >
@@ -213,7 +295,9 @@ export function RateEditorDialog({
                 type="submit"
                 variant="brand"
                 loading={setOverrides.isPending}
-                disabled={!hasChange || !rateValid || !minStayValid || pending}
+                disabled={
+                  !hasChange || !rateValid || !minStayValid || !rangeValid || pending
+                }
               >
                 Speichern
               </Button>
