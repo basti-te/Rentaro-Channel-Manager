@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "smoke": "tsx scripts/smoke.ts",
+    "ids": "tsx scripts/list-ids.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

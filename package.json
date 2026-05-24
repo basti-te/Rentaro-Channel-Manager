@@ -20,6 +20,7 @@
     "db:studio": "pnpm --filter @cm/db studio",
     "channex:smoke": "pnpm --filter @cm/channex smoke",
     "channex:tasks": "pnpm --filter @cm/db channex:tasks",
+    "channex:ids": "pnpm --filter @cm/channex ids",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
