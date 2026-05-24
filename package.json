@@ -19,6 +19,7 @@
     "db:verify": "pnpm --filter @cm/db verify",
     "db:studio": "pnpm --filter @cm/db studio",
     "channex:smoke": "pnpm --filter @cm/channex smoke",
+    "channex:tasks": "pnpm --filter @cm/db channex:tasks",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {

@@ -136,28 +136,30 @@ async function runFlush(runId: string, step: Step): Promise<FlushResult> {
   );
   const mapEntries = new Map(Object.entries(mappings));
 
-  // 2. ONE batched /availability across all properties.
-  const availabilityEntries = await step.run('push-availability', async () => {
+  // 2. ONE batched /availability across all properties. Capture the
+  //    Channex task id(s) — every per-property audit row gets the same
+  //    task id(s), since the batch produced one (or zero) actual API call.
+  const availabilityResult = await step.run('push-availability', async () => {
     const values = await resolveAvailabilityValues(db, availability, mapEntries);
-    if (values.length === 0) return 0;
+    if (values.length === 0) return { entries: 0, taskIds: [] as string[] };
     const channex = createChannexClient({
       baseUrl: env.CHANNEX_API_URL,
       apiKey: env.CHANNEX_API_KEY,
     });
-    await channex.availability.push(values);
-    return values.length;
+    const taskIds = await channex.availability.push(values);
+    return { entries: values.length, taskIds };
   });
 
   // 3. ONE batched /restrictions (rate + min-stay) across all properties.
-  const rateEntries = await step.run('push-rates', async () => {
+  const ratesResult = await step.run('push-rates', async () => {
     const values = await resolveRateValues(db, rates, mapEntries);
-    if (values.length === 0) return 0;
+    if (values.length === 0) return { entries: 0, taskIds: [] as string[] };
     const channex = createChannexClient({
       baseUrl: env.CHANNEX_API_URL,
       apiKey: env.CHANNEX_API_KEY,
     });
-    await channex.restrictions.push(values);
-    return values.length;
+    const taskIds = await channex.restrictions.push(values);
+    return { entries: values.length, taskIds };
   });
 
   // 4. Mark flushed + per-property audit rows (keeps sync.statusByProperty UI).
@@ -179,7 +181,13 @@ async function runFlush(runId: string, step: Step): Promise<FlushResult> {
             : ('push_rates' as const),
         status: 'success' as const,
         payload: { from: r.dateFrom, to: r.dateTo, reason: r.reason ?? null },
-        result: { batchId: runId },
+        result: {
+          batchId: runId,
+          taskIds:
+            r.kind === 'availability'
+              ? availabilityResult.taskIds
+              : ratesResult.taskIds,
+        },
         startedAt: new Date(),
         finishedAt: new Date(),
       }));
@@ -188,8 +196,8 @@ async function runFlush(runId: string, step: Step): Promise<FlushResult> {
 
   return {
     flushed: claimed.length,
-    availabilityEntries,
-    rateEntries,
+    availabilityEntries: availabilityResult.entries,
+    rateEntries: ratesResult.entries,
     properties: propertyIds.length,
   };
 }
