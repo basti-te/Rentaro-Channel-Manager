@@ -9,6 +9,7 @@ import { Input } from '../../components/ui/Input';
 import { Label } from '../../components/ui/Label';
 import { Switch } from '../../components/ui/Switch';
 import { trpc } from '../../lib/trpc';
+import { currencySymbol, formatMoney } from '../../lib/format-money';
 import { cn } from '@cm/ui';
 import type { BookingSource } from './BookingBlock';
 
@@ -21,6 +22,8 @@ interface Property {
   defaultRateCents: bigint | number | null;
   defaultCleaningFeeCents?: bigint | number | null;
   defaultMinStay: number;
+  /** Apartment-specific currency override; null = inherit defaultCurrency. */
+  currency: string | null;
 }
 
 /** Subset of a Booking needed to pre-fill the edit form. */
@@ -56,6 +59,8 @@ interface Props {
   defaultCityTaxRateBp?: number;
   defaultCheckinTime?: string;
   defaultCheckoutTime?: string;
+  /** Tenant-default currency, used when the selected property doesn't override. */
+  defaultCurrency?: string;
   onClose: () => void;
   onCreated: () => void;
   onUpdated?: () => void;
@@ -69,6 +74,7 @@ export function NewBookingDialog({
   defaultCityTaxRateBp = 500,
   defaultCheckinTime = '15:00',
   defaultCheckoutTime = '11:00',
+  defaultCurrency = 'EUR',
   onClose,
   onCreated,
   onUpdated,
@@ -146,6 +152,13 @@ export function NewBookingDialog({
     if (!checkin || !checkout) return 0;
     return Math.max(0, differenceInCalendarDays(new Date(checkout), new Date(checkin)));
   }, [checkin, checkout]);
+
+  /** Currency for THIS booking: selected apartment's override, else workspace default. */
+  const effectiveCurrency = useMemo(() => {
+    const p = properties.find((x) => x.id === propertyId);
+    return p?.currency || defaultCurrency;
+  }, [properties, propertyId, defaultCurrency]);
+  const symbol = currencySymbol(effectiveCurrency);
 
   const selectedProperty = useMemo(
     () => properties.find((p) => p.id === propertyId) ?? null,
@@ -267,7 +280,7 @@ export function NewBookingDialog({
       ...(mode === 'guest' && cleaningCents != null ? { cleaningFeeCents: cleaningCents } : {}),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
       ...(mode === 'guest' ? { autoReviewEnabled: autoReview } : {}),
-      currency: 'EUR',
+      currency: effectiveCurrency,
     });
   }
 
@@ -503,6 +516,7 @@ export function NewBookingDialog({
                   <EuroInput
                     id="bk-nightly"
                     value={nightlyEuro}
+                    symbol={symbol}
                     onChange={setNightlyEuro}
                   />
                   <div className="text-[10.5px] text-whisper mt-0.5">pro Nacht, inkl. MwSt.</div>
@@ -512,6 +526,7 @@ export function NewBookingDialog({
                   <EuroInput
                     id="bk-cleaning"
                     value={cleaningEuro}
+                    symbol={symbol}
                     onChange={setCleaningEuro}
                   />
                   <div className="text-[10.5px] text-whisper mt-0.5">einmalig, inkl. MwSt.</div>
@@ -523,9 +538,10 @@ export function NewBookingDialog({
                 <div className="rounded-md border border-line bg-canvas/60 px-4 py-3 space-y-1.5">
                   <BreakdownRow
                     label="Übernachtung"
+                    currency={effectiveCurrency}
                     detail={
                       <>
-                        <span className="num">{formatEuro(breakdown.nightlyCents)}</span>
+                        <span className="num">{formatMoney(breakdown.nightlyCents, effectiveCurrency)}</span>
                         {' × '}
                         <span className="num">{breakdown.nights}</span>{' '}
                         {breakdown.nights === 1 ? 'Nacht' : 'Nächte'}
@@ -534,10 +550,15 @@ export function NewBookingDialog({
                     value={breakdown.lodgingCents}
                   />
                   {breakdown.cleaningCents > 0 && (
-                    <BreakdownRow label="Reinigung" value={breakdown.cleaningCents} />
+                    <BreakdownRow
+                      label="Reinigung"
+                      value={breakdown.cleaningCents}
+                      currency={effectiveCurrency}
+                    />
                   )}
                   <BreakdownRow
                     label="Übernachtungssteuer"
+                    currency={effectiveCurrency}
                     detail={
                       <span className="num">
                         {(breakdown.cityTaxRateBp / 100).toFixed(
@@ -551,7 +572,7 @@ export function NewBookingDialog({
                   <div className="border-t border-line pt-2 mt-1 flex items-baseline justify-between">
                     <span className="text-[13px] font-semibold text-ink">Gesamtpreis</span>
                     <span className="display num text-[20px] font-medium text-ink">
-                      {formatEuro(breakdown.total)}
+                      {formatMoney(breakdown.total, effectiveCurrency)}
                     </span>
                   </div>
                 </div>
@@ -649,10 +670,13 @@ function ModeTab({
 function EuroInput({
   id,
   value,
+  symbol,
   onChange,
 }: {
   id: string;
   value: string;
+  /** Currency symbol prefix ("€", "$", "CHF" …). */
+  symbol: string;
   onChange: (v: string) => void;
 }) {
   return (
@@ -661,13 +685,13 @@ function EuroInput({
         id={id}
         type="text"
         inputMode="decimal"
-        className="pl-7 num"
+        className={cn(symbol.length > 1 ? 'pl-12 num' : 'pl-7 num')}
         placeholder="0"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted pointer-events-none">
-        €
+        {symbol}
       </span>
     </div>
   );
@@ -677,10 +701,12 @@ function BreakdownRow({
   label,
   detail,
   value,
+  currency,
 }: {
   label: string;
   detail?: React.ReactNode;
   value: number;
+  currency: string;
 }) {
   return (
     <div className="flex items-baseline justify-between gap-3 text-[12.5px]">
@@ -688,7 +714,7 @@ function BreakdownRow({
         <span>{label}</span>
         {detail && <span className="ml-2 text-muted">{detail}</span>}
       </div>
-      <span className="num text-ink">{formatEuro(value)}</span>
+      <span className="num text-ink">{formatMoney(value, currency)}</span>
     </div>
   );
 }
@@ -718,7 +744,3 @@ function SummaryRow({ label, value }: { label: string; value: React.ReactNode })
   );
 }
 
-function formatEuro(cents: number): string {
-  const v = cents / 100;
-  return `€${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}

@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Label } from '../../components/ui/Label';
 import { Switch } from '../../components/ui/Switch';
+import { currencySymbol } from '../../lib/format-money';
 import { trpc } from '../../lib/trpc';
 
 export interface RateSelection {
@@ -22,6 +23,8 @@ interface Props {
   open: boolean;
   selection: RateSelection | null;
   propertyName: string | null;
+  /** Effective currency for the property (property.currency ?? tenant default). */
+  propertyCurrency: string | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -37,9 +40,11 @@ export function RateEditorDialog({
   open,
   selection,
   propertyName,
+  propertyCurrency,
   onClose,
   onSaved,
 }: Props) {
+  const symbol = currencySymbol(propertyCurrency);
   const [rate, setRate] = useState('');
   const [minStay, setMinStay] = useState('');
   const [stopSell, setStopSell] = useState(false);
@@ -141,7 +146,7 @@ export function RateEditorDialog({
         <form onSubmit={submit} className="px-6 pb-6 pt-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="ro-rate">Preis / Nacht (€)</Label>
+              <Label htmlFor="ro-rate">Preis / Nacht ({symbol})</Label>
               <Input
                 id="ro-rate"
                 inputMode="decimal"

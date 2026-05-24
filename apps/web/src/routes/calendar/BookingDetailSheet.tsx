@@ -18,6 +18,7 @@ import { cn } from '@cm/ui';
 
 import { Button } from '../../components/ui/Button';
 import { Switch } from '../../components/ui/Switch';
+import { formatMoney } from '../../lib/format-money';
 import { trpc } from '../../lib/trpc';
 import type { BookingSource } from './BookingBlock';
 
@@ -623,11 +624,9 @@ function BreakdownRow({
 }
 
 function formatPrice(cents: number, currency: string): string {
-  return formatPriceCents(cents, currency);
+  return formatMoney(cents, currency);
 }
 
 function formatPriceCents(cents: number, currency: string): string {
-  const v = cents / 100;
-  const symbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency;
-  return `${symbol}${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatMoney(cents, currency);
 }

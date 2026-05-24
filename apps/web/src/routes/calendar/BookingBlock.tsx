@@ -1,5 +1,6 @@
 import { cn } from '@cm/ui';
 import { Lock } from 'lucide-react';
+import { formatMoney } from '../../lib/format-money';
 
 export type BookingSource =
   | 'internal'
@@ -157,8 +158,5 @@ export function BookingBlock({
 }
 
 function formatPrice(cents: number, currency: string | null | undefined): string {
-  const value = cents / 100;
-  const symbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : (currency ?? '');
-  if (value >= 1000) return `${symbol}${(value / 1000).toFixed(1)}k`;
-  return `${symbol}${value.toFixed(0)}`;
+  return formatMoney(cents, currency, { tight: true });
 }

@@ -132,9 +132,9 @@ export function CalendarPage() {
         defaultRateCents: p.defaultRateCents,
         defaultCleaningFeeCents: p.defaultCleaningFeeCents,
         defaultMinStay: p.defaultMinStay,
-        currency: 'EUR',
+        currency: p.currency ?? tenant?.defaultCurrency ?? 'EUR',
       })),
-    [propsQ.data],
+    [propsQ.data, tenant?.defaultCurrency],
   );
 
   const bookings = useMemo(
@@ -284,6 +284,7 @@ export function CalendarPage() {
         defaultCityTaxRateBp={tenant?.defaultCityTaxRateBp ?? 500}
         defaultCheckinTime={tenant?.defaultCheckinTime ?? '15:00'}
         defaultCheckoutTime={tenant?.defaultCheckoutTime ?? '11:00'}
+        defaultCurrency={tenant?.defaultCurrency ?? 'EUR'}
         onClose={() => {
           setNewBooking(null);
           setEditing(null);
@@ -304,6 +305,13 @@ export function CalendarPage() {
         propertyName={
           rateSelection
             ? properties.find((p) => p.id === rateSelection.propertyId)?.name ?? null
+            : null
+        }
+        propertyCurrency={
+          rateSelection
+            ? properties.find((p) => p.id === rateSelection.propertyId)?.currency ??
+              tenant?.defaultCurrency ??
+              null
             : null
         }
         onClose={() => setRateSelection(null)}

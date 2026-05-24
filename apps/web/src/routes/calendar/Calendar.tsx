@@ -17,6 +17,7 @@ import {
 } from './utils';
 import { BookingBlock, type BookingSource } from './BookingBlock';
 import { PropertyRail, GroupHeader, type SyncState } from './PropertyRail';
+import { formatMoney } from '../../lib/format-money';
 
 export interface PropertySyncInfo {
   state: SyncState;
@@ -646,14 +647,10 @@ export { formatISODate };
 
 function formatRate(
   cents: bigint | number | null | undefined,
-  currency: string | undefined,
+  currency: string | null | undefined,
 ): string | null {
   if (cents == null) return null;
-  const value = typeof cents === 'bigint' ? Number(cents) : cents;
-  if (!Number.isFinite(value) || value < 0) return null;
-  const symbol = !currency || currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency;
-  const v = value / 100;
-  // Tight format: "€80" for integer, "€79.5" for fractional, "€1.2k" for ≥1000
-  if (v >= 1000) return `${symbol}${(v / 1000).toFixed(1)}k`;
-  return `${symbol}${Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1)}`;
+  const n = typeof cents === 'bigint' ? Number(cents) : cents;
+  if (!Number.isFinite(n) || n < 0) return null;
+  return formatMoney(n, currency, { tight: true });
 }
