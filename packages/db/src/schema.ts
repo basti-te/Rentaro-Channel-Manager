@@ -311,6 +311,13 @@ export const properties = pgTable(
     sortOrder: integer('sort_order').notNull().default(0),
     active: boolean('active').notNull().default(true),
 
+    /**
+     * Per-apartment currency override (ISO 4217). NULL = inherit
+     * `tenants.default_currency`. Set this when an apartment trades in a
+     * different currency than the tenant default (e.g. a USD test property
+     * for Channex certification, or a real US-market listing).
+     */
+    currency: text('currency'),
     /** Default nightly rate shown on empty calendar cells. Null = unset. */
     defaultRateCents: bigint('default_rate_cents', { mode: 'bigint' }),
     /** Default minimum stay (nights). Shown on empty calendar cells. */

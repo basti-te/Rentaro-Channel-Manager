@@ -34,6 +34,12 @@ export const propertiesRouter = router({
         name: z.string().min(1).max(80).trim(),
         groupId: z.string().uuid().nullable(),
         description: z.string().max(2000).optional(),
+        /** ISO 4217 (e.g. "USD"). Omit/null = inherit tenant default. */
+        currency: z
+          .string()
+          .trim()
+          .regex(/^[A-Z]{3}$/, 'ISO-4217-Code, z. B. EUR')
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -64,6 +70,7 @@ export const propertiesRouter = router({
           name: input.name,
           groupId: input.groupId,
           description: input.description,
+          currency: input.currency ?? null,
           sortOrder: nextOrder,
         })
         .returning();
@@ -80,6 +87,18 @@ export const propertiesRouter = router({
         active: z.boolean().optional(),
         defaultRateCents: z.number().int().nonnegative().nullable().optional(),
         defaultMinStay: z.number().int().min(1).max(60).optional(),
+        /**
+         * ISO 4217 currency override for this apartment. `null` clears it
+         * (reverts to tenant default). Changing currency on a connected
+         * apartment does NOT retro-update Channex — re-onboarding is the
+         * clean path if you need that.
+         */
+        currency: z
+          .string()
+          .trim()
+          .regex(/^[A-Z]{3}$/, 'ISO-4217-Code, z. B. EUR')
+          .nullable()
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -200,7 +219,8 @@ export const propertiesRouter = router({
 
       const title = input.title ?? prop.name;
       const timezone = input.timezone ?? tenant.defaultTimezone;
-      const currency = input.currency ?? tenant.defaultCurrency;
+      // Priority: explicit override → property-level setting → tenant default.
+      const currency = input.currency ?? prop.currency ?? tenant.defaultCurrency;
 
       // 2. Call Channex (3 sequential creates)
       const channex = createChannexClient({
