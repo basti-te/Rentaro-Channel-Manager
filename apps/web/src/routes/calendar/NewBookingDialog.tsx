@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { addDays, differenceInCalendarDays, format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { Lock, User, Users } from 'lucide-react';
+import { Info, Lock, User, Users } from 'lucide-react';
 
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -237,16 +237,10 @@ export function NewBookingDialog({
 
     // ── EDIT MODE: dispatch update mutation ────────────────────────────
     if (isEdit && editing) {
-      if (externalSource) {
-        // External: only notes + auto-review can be changed
-        update.mutate({
-          id: editing.id,
-          notes: notes.trim() || null,
-          autoReviewEnabled: autoReview,
-        });
-        return;
-      }
-      // Internal/block: full update
+      // Full edit for every source. OTA bookings: the API does NOT echo
+      // changes back to Channex (no /bookings/{id} modify). Only availability
+      // is recomputed via ARI so the new range gets inventory=0 — the
+      // info banner above explains this trade-off.
       update.mutate({
         id: editing.id,
         propertyId,
@@ -315,8 +309,8 @@ export function NewBookingDialog({
           </h2>
           <p className="mt-1 text-[13px] text-muted">
             {externalSource
-              ? 'Nur Notiz und Auto-Bewertung änderbar — Rest verwaltet die OTA.'
-              : 'Lokal speichern — Channex-Sync folgt in Phase 5.'}
+              ? 'Lokale Änderungen — die OTA wird nicht informiert.'
+              : 'Lokal speichern — Channex-Sync folgt automatisch.'}
           </p>
         </div>
 
@@ -339,52 +333,48 @@ export function NewBookingDialog({
             </div>
           )}
 
-          {/* External summary — shown instead of editable fields for OTA bookings */}
+          {/* OTA edit warning — explains the asymmetric sync behavior. */}
           {externalSource && editing && (
-            <div className="rounded-md border border-line bg-canvas/60 px-4 py-3 space-y-1.5 text-[12.5px]">
-              <SummaryRow label="Apartment" value={
-                properties.find((p) => p.id === editing.propertyId)?.name ?? '—'
-              } />
-              <SummaryRow
-                label="Aufenthalt"
-                value={
-                  <>
-                    <span className="num">{editing.checkin}</span>
-                    {' → '}
-                    <span className="num">{editing.checkout}</span>
-                  </>
-                }
+            <div
+              className={cn(
+                'rounded-md border px-3.5 py-3 flex items-start gap-2.5',
+                'border-warning/40 bg-warning/10 text-ink',
+              )}
+              role="note"
+            >
+              <Info
+                className="h-4 w-4 mt-0.5 flex-shrink-0 text-warning"
+                strokeWidth={2}
               />
-              {editing.guestName && (
-                <SummaryRow label="Gast" value={editing.guestName} />
-              )}
-              {editing.guestCount != null && editing.guestCount > 0 && (
-                <SummaryRow label="Gäste" value={<span className="num">{editing.guestCount}</span>} />
-              )}
+              <div className="text-[12.5px] leading-relaxed">
+                <div className="font-medium text-ink">OTA-Buchung — Änderungen bleiben nur in Rentaro.</div>
+                <div className="text-ink-soft mt-0.5">
+                  Die OTA (z.&nbsp;B. Booking.com) bekommt nichts davon mit. Die Verfügbarkeit
+                  auf Channex wird jedoch automatisch angepasst — an den geänderten Tagen
+                  kann keine weitere Buchung mehr eingehen. Beim nächsten echten OTA-Sync
+                  (z.&nbsp;B. eine Stornierung) können lokale Änderungen überschrieben werden.
+                </div>
+              </div>
             </div>
           )}
 
-          {/* Editable apartment selector — hidden for external bookings */}
-          {!externalSource && (
-            <div className="space-y-1.5">
-              <Label htmlFor="bk-apt">Apartment</Label>
-              <select
-                id="bk-apt"
-                value={propertyId}
-                onChange={(e) => setPropertyId(e.target.value)}
-                className="h-10 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none"
-              >
-                {properties.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          {/* Editable apartment selector — shown for all sources now (OTA included). */}
+          <div className="space-y-1.5">
+            <Label htmlFor="bk-apt">Apartment</Label>
+            <select
+              id="bk-apt"
+              value={propertyId}
+              onChange={(e) => setPropertyId(e.target.value)}
+              className="h-10 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none"
+            >
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          {!externalSource && (
-          <>
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -579,8 +569,6 @@ export function NewBookingDialog({
               )}
             </>
           )}
-          </>
-          )}
 
           {/* Notes */}
           <div className="space-y-1.5">
@@ -619,11 +607,7 @@ export function NewBookingDialog({
               type="submit"
               variant="brand"
               loading={submitting}
-              disabled={
-                externalSource
-                  ? false
-                  : !propertyId || !checkin || !checkout || nights <= 0
-              }
+              disabled={!propertyId || !checkin || !checkout || nights <= 0}
             >
               {isEdit
                 ? 'Aktualisieren'
@@ -733,14 +717,5 @@ function euroStringToCents(s: string): number | null {
   const v = parseFloat(trimmed);
   if (!Number.isFinite(v) || v < 0) return null;
   return Math.round(v * 100);
-}
-
-function SummaryRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-muted">{label}</span>
-      <span className="text-ink">{value}</span>
-    </div>
-  );
 }
 

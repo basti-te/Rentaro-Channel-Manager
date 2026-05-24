@@ -315,24 +315,21 @@ export const bookingsRouter = router({
       )[0];
       if (!current) throw new TRPCError({ code: 'NOT_FOUND' });
 
-      const isExternal = isExternalSource(current.source);
+      // OTA bookings: locally editable on full scope (operators sometimes
+      // need to extend a stay by a night, fix a guest name, etc.).
+      //
+      // KEY DESIGN NOTE: we do NOT send a Channex `/bookings/{id}` modify
+      // call. The OTA-side reservation stays intact. The only outbound
+      // sync is the availability recompute via `enqueueAri(... 'availability')`
+      // below — that pushes inventory=0 to Channex/OTAs for the new days,
+      // so no further booking can land on the extended nights. At the next
+      // genuine OTA update (real modification or cancellation) Channex will
+      // re-send the original revision, which our ingest overwrites the
+      // local edits with — predictable + audit-friendly.
+      //
+      // The UI surfaces this trade-off via an info banner in the edit dialog.
 
-      // External bookings: only notes + autoReviewEnabled editable
-      if (isExternal) {
-        const patch: Partial<typeof bookings.$inferInsert> = {};
-        if (input.notes !== undefined) patch.notes = input.notes;
-        if (input.autoReviewEnabled !== undefined) patch.autoReviewEnabled = input.autoReviewEnabled;
-        if (Object.keys(patch).length === 0) return current;
-        const [row] = await ctx.db
-          .update(bookings)
-          .set(patch)
-          .where(and(eq(bookings.id, input.id), eq(bookings.tenantId, ctx.tenantId!)))
-          .returning();
-        // No sync needed — neither field affects Channex inventory.
-        return row;
-      }
-
-      // ── Internal/block: build the merged values ────────────────────────
+      // ── Build the merged values (same path for internal/block/OTA) ───────
       const next = {
         propertyId: input.propertyId ?? current.propertyId,
         checkin: input.checkin ?? current.checkin,
