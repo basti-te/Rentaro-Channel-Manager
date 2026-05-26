@@ -30,7 +30,7 @@ type Step = 1 | 2 | 3 | 4;
 const STEP_LABELS: Record<Step, string> = {
   1: 'Workspace',
   2: 'Erstes Apartment',
-  3: 'Channex',
+  3: 'Schnittstelle',
   4: 'Tarif',
 };
 
@@ -379,7 +379,7 @@ function ApartmentStep({
   return (
     <StepCard
       title="Dein erstes Apartment"
-      subtitle="Leg eine erste Ferienwohnung an. Diese Wohnung kannst du gleich danach mit Channex verbinden und an Booking.com/Airbnb anschließen. Weitere Apartments fügst du später aus der Apartments-Seite hinzu."
+      subtitle="Leg eine erste Ferienwohnung an. Diese Wohnung kannst du gleich danach mit unserer Schnittstelle verbinden und an Booking.com/Airbnb anschließen. Weitere Apartments fügst du später aus der Apartments-Seite hinzu."
     >
       <form onSubmit={submit} className="space-y-5">
         <div className="space-y-1.5">
@@ -466,7 +466,7 @@ function ChannexStep({
 }) {
   const onboard = trpc.properties.onboardToChannex.useMutation({
     onSuccess: () => {
-      toast.success('Mit Channex verbunden — Channels sind synchronisiert');
+      toast.success('Schnittstelle verbunden — Channels sind synchronisiert');
       onDone();
     },
     onError: (e) => toast.error(e.message),
@@ -475,18 +475,17 @@ function ChannexStep({
   return (
     <StepCard
       title="An die Buchungsplattformen anschließen"
-      subtitle="Channex ist unser Verbindungspartner zu Booking.com, Airbnb, Expedia & Co. Mit einem Klick legen wir hinter den Kulissen die Verbindung an — danach kannst du deine OTA-Kanäle bei Channex einrichten und Verfügbarkeit/Preise/Buchungen fließen automatisch."
+      subtitle="Unsere Schnittstelle stellt die Verbindung zu Booking.com, Airbnb, Expedia & Co. her. Mit einem Klick legen wir die Anbindung im Hintergrund an — danach kannst du deine OTA-Kanäle einrichten und Verfügbarkeit, Preise und Buchungen fließen automatisch."
     >
       <div className="rounded-md border border-line bg-canvas/60 p-4 text-[13px] text-muted leading-relaxed space-y-2">
         <p>
-          Wenn du auf <span className="font-medium text-ink">Verbinden</span> klickst, legen wir
-          in Channex an: eine Property, einen Room Type und einen Rate Plan — alle drei mit
-          deinen oben eingegebenen Defaults.
+          Wenn du auf <span className="font-medium text-ink">Verbinden</span> klickst, registrieren
+          wir deine Unterkunft in der Schnittstelle — mit den Defaults, die du oben angegeben hast.
         </p>
         <p>
           Du kannst diesen Schritt auch <span className="font-medium text-ink">überspringen</span>{' '}
           und später aus der Apartments-Seite verbinden — z. B. wenn du erstmal lokal mit
-          Direct-Buchungen testen willst.
+          Direkt-Buchungen testen willst.
         </p>
       </div>
 
@@ -509,7 +508,7 @@ function ChannexStep({
           iconRight={<ArrowRight className="h-4 w-4" />}
           onClick={() => apartmentId && onboard.mutate({ propertyId: apartmentId })}
         >
-          Mit Channex verbinden
+          Jetzt verbinden
         </Button>
       </div>
     </StepCard>
