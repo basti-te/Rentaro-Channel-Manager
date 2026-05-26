@@ -72,6 +72,16 @@ export function DashboardLayout() {
     }
   }, [auth.user, meQ.data, bootstrap, bootstrapping]);
 
+  // First-time wizard guard — if the tenant hasn't finished /onboarding yet,
+  // push them there. Legacy tenants got onboarded_at backfilled by migration
+  // 0017 so they sail through.
+  useEffect(() => {
+    const tenant = meQ.data?.memberships[0];
+    if (tenant && !tenant.onboardedAt) {
+      void nav({ to: '/onboarding' });
+    }
+  }, [meQ.data, nav]);
+
   // Plan / subscription gate — read regardless of route. Tenant context
   // available only after meQ resolves with at least one membership.
   const hasTenant = !!meQ.data?.memberships.length;

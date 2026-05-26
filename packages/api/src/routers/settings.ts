@@ -69,6 +69,21 @@ export const settingsRouter = router({
       return { ok: true };
     }),
 
+  /**
+   * Mark the first-time onboarding wizard as completed. Idempotent — calling
+   * it again does nothing. The dashboard checks `me.current.tenant.onboardedAt`
+   * and routes new tenants to `/onboarding` until this fires.
+   */
+  completeOnboarding: adminProcedure.mutation(async ({ ctx }) => {
+    const [row] = await ctx.db
+      .update(tenants)
+      .set({ onboardedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(tenants.id, ctx.tenantId!)))
+      .returning({ id: tenants.id, onboardedAt: tenants.onboardedAt });
+    if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
+    return { ok: true, onboardedAt: row.onboardedAt };
+  }),
+
   setRateSource: adminProcedure
     .input(z.object({ rateSource: z.enum(['pms', 'pricelabs']) }))
     .mutation(async ({ ctx, input }) => {

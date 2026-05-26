@@ -27,6 +27,8 @@ export const meRouter = router({
         defaultCheckoutTime: tenants.defaultCheckoutTime,
         defaultCurrency: tenants.defaultCurrency,
         rateSource: tenants.rateSource,
+        /** First-time wizard marker. NULL = redirect to /onboarding. */
+        onboardedAt: tenants.onboardedAt,
       })
       .from(memberships)
       .leftJoin(tenants, eq(tenants.id, memberships.tenantId))

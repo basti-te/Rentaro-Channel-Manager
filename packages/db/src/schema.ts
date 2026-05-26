@@ -170,6 +170,13 @@ export const tenants = pgTable('tenants', {
    */
   billingExempt: boolean('billing_exempt').notNull().default(false),
 
+  /**
+   * First-time setup wizard completion marker. NULL = user just signed up,
+   * routes redirect to /onboarding. Set on wizard finish (or on legacy
+   * tenants via the migration) so they go straight to /calendar.
+   */
+  onboardedAt: timestamp('onboarded_at', { withTimezone: true }),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

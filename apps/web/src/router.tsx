@@ -7,6 +7,7 @@ import {
 
 import { RootLayout } from './routes/__root';
 import { LoginPage } from './routes/login';
+import { OnboardingPage } from './routes/onboarding';
 import { ImpressumPage } from './routes/impressum';
 import { DatenschutzPage } from './routes/datenschutz';
 import { DashboardLayout } from './routes/_dashboard';
@@ -30,6 +31,13 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: LoginPage,
+});
+
+/** First-time setup wizard. Outside the dashboard layout (no sidebar). */
+const onboardingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/onboarding',
+  component: OnboardingPage,
 });
 
 /** Public — legal notice, reachable without authentication. */
@@ -96,6 +104,7 @@ const settingsRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
+  onboardingRoute,
   impressumRoute,
   datenschutzRoute,
   dashboardRoute.addChildren([
