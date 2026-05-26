@@ -7,6 +7,7 @@ import {
 
 import { RootLayout } from './routes/__root';
 import { LoginPage } from './routes/login';
+import { LandingPage } from './routes/landing';
 import { OnboardingPage } from './routes/onboarding';
 import { ImpressumPage } from './routes/impressum';
 import { DatenschutzPage } from './routes/datenschutz';
@@ -25,6 +26,15 @@ const rootRoute = createRootRoute({
       <Outlet />
     </RootLayout>
   ),
+});
+
+/** Public marketing landing page. Signed-in users get auto-redirected
+ *  to /calendar from inside the LandingPage component, so a bookmark to
+ *  `rentaro.cloud` keeps working as the operator's app entry point. */
+const landingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/',
+  component: LandingPage,
 });
 
 const loginRoute = createRoute({
@@ -62,7 +72,7 @@ const dashboardRoute = createRoute({
 
 const overviewRoute = createRoute({
   getParentRoute: () => dashboardRoute,
-  path: '/',
+  path: '/overview',
   component: OverviewPage,
 });
 
@@ -103,6 +113,7 @@ const settingsRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
+  landingRoute,
   loginRoute,
   onboardingRoute,
   impressumRoute,

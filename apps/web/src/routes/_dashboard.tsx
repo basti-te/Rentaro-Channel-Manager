@@ -32,7 +32,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: '/calendar',   label: 'Calendar',   icon: Calendar },
   { to: '/apartments', label: 'Apartments', icon: Building2 },
-  { to: '/',           label: 'Overview',   icon: LayoutGrid },
+  { to: '/overview',   label: 'Overview',   icon: LayoutGrid },
   { to: '/messages',   label: 'Messages',   icon: MessageSquare },
   { to: '/cleaning',   label: 'Cleaning',   icon: SprayCan },
   { to: '/settings',   label: 'Settings',   icon: Settings },
