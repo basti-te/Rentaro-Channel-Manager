@@ -169,12 +169,12 @@ function Hero() {
               }}
             />
           </div>
-          {/* Floating editorial caption */}
-          <div className="hidden sm:block absolute -bottom-6 -left-6 max-w-[260px] rounded-xl bg-surface border border-line shadow-md p-4">
+          {/* Floating editorial caption — inset on mobile, peeking out on sm+ */}
+          <div className="absolute bottom-4 left-4 sm:-bottom-6 sm:-left-6 max-w-[240px] sm:max-w-[260px] rounded-xl bg-surface border border-line shadow-md p-3.5 sm:p-4">
             <div className="text-[11px] uppercase tracking-[0.14em] text-brand font-medium">
               Live im Kalender
             </div>
-            <div className="mt-1 text-[13.5px] text-ink leading-snug">
+            <div className="mt-1 text-[13px] sm:text-[13.5px] text-ink leading-snug">
               "Neue Buchung von Airbnb · Apartment 3 · 14.–17. Juni"
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-[11.5px] text-muted">
