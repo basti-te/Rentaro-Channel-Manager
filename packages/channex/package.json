@@ -10,6 +10,8 @@
     "test": "vitest run",
     "smoke": "tsx scripts/smoke.ts",
     "ids": "tsx scripts/list-ids.ts",
+    "register-webhook": "tsx scripts/register-webhook.ts",
+    "check-feed": "tsx scripts/check-feed.ts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
