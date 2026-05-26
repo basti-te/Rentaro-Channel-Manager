@@ -395,6 +395,12 @@ export const bookings = pgTable(
     notes: text('notes'),
     rawPayload: jsonb('raw_payload'), // full Channex booking blob, for debugging
 
+    /** Stable foreign-system id for bulk-imports (e.g. "guesty:HM5BNF9K8D").
+     *  Used as the idempotency key by the Guesty/Smoobu import scripts so
+     *  re-running an import never duplicates rows. NULL for native bookings. */
+    externalId: text('external_id'),
+    importedAt: timestamp('imported_at', { withTimezone: true }),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

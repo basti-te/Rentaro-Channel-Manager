@@ -21,6 +21,8 @@
     "channex:tasks": "tsx scripts/channex-tasks.ts",
     "webhooks:latest": "tsx scripts/latest-webhook.ts",
     "check-onboarding": "tsx scripts/check-onboarding.ts",
+    "import-guesty": "tsx scripts/import-guesty.ts",
+    "delete-test-bookings": "tsx scripts/delete-test-bookings.ts",
     "push": "drizzle-kit push",
     "studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
@@ -35,6 +37,7 @@
     "dotenv": "^16.4.5",
     "drizzle-kit": "^0.28.1",
     "tsx": "^4.19.1",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "xlsx": "^0.18.5"
   }
 }
