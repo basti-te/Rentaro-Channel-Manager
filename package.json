@@ -18,6 +18,7 @@
     "db:seed": "pnpm --filter @cm/db seed",
     "db:import-guesty": "pnpm --filter @cm/db import-guesty",
     "db:delete-test-bookings": "pnpm --filter @cm/db delete-test-bookings",
+    "db:disconnect-channex": "pnpm --filter @cm/db disconnect-channex",
     "db:verify": "pnpm --filter @cm/db verify",
     "db:studio": "pnpm --filter @cm/db studio",
     "channex:smoke": "pnpm --filter @cm/channex smoke",

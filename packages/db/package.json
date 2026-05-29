@@ -23,6 +23,7 @@
     "check-onboarding": "tsx scripts/check-onboarding.ts",
     "import-guesty": "tsx scripts/import-guesty.ts",
     "delete-test-bookings": "tsx scripts/delete-test-bookings.ts",
+    "disconnect-channex": "tsx scripts/disconnect-channex.ts",
     "push": "drizzle-kit push",
     "studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
