@@ -75,6 +75,7 @@ export function PublicCleaningCalendarPage() {
 
   const cal = q.data.calendar;
   const properties = q.data.properties;
+  const groups = q.data.groups;
   const bookingsForCalendar = q.data.bookings.map((b) => ({
     id: b.id,
     propertyId: b.propertyId,
@@ -93,13 +94,15 @@ export function PublicCleaningCalendarPage() {
     currency: b.currency ?? 'EUR',
   }));
 
-  // Adapt properties to Calendar's expected shape (it needs defaultRateCents
-  // for cell formatting — we stub since prices aren't shown anyway).
+  // Adapt properties to Calendar's expected shape. We pass `defaultRateCents:
+  // null` so empty cells render blank instead of "0,00 €" — cleaning staff
+  // doesn't need prices in the grid. The booking-detail modal still shows
+  // the per-booking price if the operator enabled that flag.
   const propsForCalendar = properties.map((p) => ({
     id: p.id,
     name: p.name,
-    groupId: null,
-    defaultRateCents: 0n,
+    groupId: p.groupId,
+    defaultRateCents: null,
     defaultMinStay: 1,
     currency: 'EUR',
   }));
@@ -173,7 +176,7 @@ export function PublicCleaningCalendarPage() {
         <Calendar
           start={start}
           dayCount={VIEWPORT_DAYS}
-          groups={[]}
+          groups={groups}
           properties={propsForCalendar}
           bookings={bookingsForCalendar}
           onBookingClick={(id) => setDetailId(id)}

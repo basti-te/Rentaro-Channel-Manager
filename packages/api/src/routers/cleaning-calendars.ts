@@ -6,6 +6,7 @@ import {
   bookings,
   cleaningCalendars,
   properties,
+  propertyGroups,
 } from '@cm/db';
 import { router, tenantProcedure, editorProcedure, publicProcedure } from '../trpc';
 
@@ -234,10 +235,26 @@ export const cleaningCalendarsRouter = router({
       }
 
       const props = await ctx.db
-        .select({ id: properties.id, name: properties.name })
+        .select({
+          id: properties.id,
+          name: properties.name,
+          groupId: properties.groupId,
+          sortOrder: properties.sortOrder,
+        })
         .from(properties)
         .where(inArray(properties.id, propertyIdFilter))
-        .orderBy(asc(properties.name));
+        .orderBy(asc(properties.sortOrder), asc(properties.name));
+
+      const groups = await ctx.db
+        .select({
+          id: propertyGroups.id,
+          name: propertyGroups.name,
+          color: propertyGroups.color,
+          sortOrder: propertyGroups.sortOrder,
+        })
+        .from(propertyGroups)
+        .where(eq(propertyGroups.tenantId, cal.tenantId))
+        .orderBy(asc(propertyGroups.sortOrder), asc(propertyGroups.name));
 
       const rawBookings =
         propertyIdFilter.length === 0
@@ -289,6 +306,7 @@ export const cleaningCalendarsRouter = router({
           showPrice: cal.showPrice,
           showBookingCode: cal.showBookingCode,
         },
+        groups,
         properties: props,
         bookings: sanitised,
       };
