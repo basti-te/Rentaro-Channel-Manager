@@ -1001,6 +1001,62 @@ export const webhookDeliveries = pgTable(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Cleaning calendars — public, shareable read-only views
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A tenant configures one or more "cleaning calendar" links here. Each link
+ * gets an unguessable slug; the operator hands that URL to their cleaning
+ * staff and the page lives at `rentaro.cloud/cal/<slug>`. No login required.
+ *
+ * The is_active flag lets the operator revoke a link without losing the
+ * configuration (handy for seasonal teams). Slug regeneration creates a
+ * fresh URL while keeping the same row.
+ *
+ * The boolean show_* flags control which booking fields the public view
+ * exposes. Defaults are privacy-conservative — guest contact info stays
+ * hidden unless the operator explicitly opts in.
+ */
+export const cleaningCalendars = pgTable(
+  'cleaning_calendars',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    /** Operator-facing label. Not exposed publicly. */
+    name: text('name').notNull(),
+    /** 32+ char unguessable token. Forms the public URL path. */
+    slug: text('slug').notNull().unique(),
+    /** When false, the public URL returns 404 without deleting the row. */
+    isActive: boolean('is_active').notNull().default(true),
+
+    /** Array of property IDs the calendar shows. Empty = all in tenant. */
+    propertyIds: jsonb('property_ids').notNull().$type<string[]>().default([]),
+
+    // Field visibility toggles — what's exposed in the public view.
+    showGuestName: boolean('show_guest_name').notNull().default(true),
+    showGuestCount: boolean('show_guest_count').notNull().default(false),
+    showGuestPhone: boolean('show_guest_phone').notNull().default(false),
+    showGuestEmail: boolean('show_guest_email').notNull().default(false),
+    showNotes: boolean('show_notes').notNull().default(false),
+    showHostNotes: boolean('show_host_notes').notNull().default(false),
+    showPrice: boolean('show_price').notNull().default(false),
+    showBookingCode: boolean('show_booking_code').notNull().default(false),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byTenant: index('cleaning_calendars_tenant_idx').on(t.tenantId),
+    bySlug: uniqueIndex('cleaning_calendars_slug_idx').on(t.slug),
+  }),
+);
+
+export type CleaningCalendar = typeof cleaningCalendars.$inferSelect;
+export type NewCleaningCalendar = typeof cleaningCalendars.$inferInsert;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Type exports (inferred from schema)
 // ─────────────────────────────────────────────────────────────────────────────
 

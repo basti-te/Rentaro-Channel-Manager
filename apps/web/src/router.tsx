@@ -9,6 +9,7 @@ import { RootLayout } from './routes/__root';
 import { LoginPage } from './routes/login';
 import { LandingPage } from './routes/landing';
 import { OnboardingPage } from './routes/onboarding';
+import { PublicCleaningCalendarPage } from './routes/cleaning-public';
 import { ImpressumPage } from './routes/impressum';
 import { DatenschutzPage } from './routes/datenschutz';
 import { DashboardLayout } from './routes/_dashboard';
@@ -48,6 +49,16 @@ const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/onboarding',
   component: OnboardingPage,
+});
+
+/** Public read-only cleaning calendar share. No auth required.
+ *  Operator generates an opaque slug under /cleaning > Kalender-Links; the
+ *  cleaning staff opens this URL on their phone. NOT_FOUND if the calendar
+ *  was rotated, toggled off, or deleted. */
+const publicCleaningCalendarRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/cal/$slug',
+  component: PublicCleaningCalendarPage,
 });
 
 /** Public — legal notice, reachable without authentication. */
@@ -116,6 +127,7 @@ const routeTree = rootRoute.addChildren([
   landingRoute,
   loginRoute,
   onboardingRoute,
+  publicCleaningCalendarRoute,
   impressumRoute,
   datenschutzRoute,
   dashboardRoute.addChildren([

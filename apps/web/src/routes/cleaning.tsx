@@ -1,12 +1,17 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import {
   SprayCan,
   ListChecks,
+  Link2,
   Plus,
   Pencil,
   Trash2,
   Send,
   AlertTriangle,
+  Copy,
+  RefreshCw,
+  Check,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { inferRouterOutputs } from '@trpc/server';
@@ -30,8 +35,9 @@ import { trpc } from '../lib/trpc';
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type Rule = RouterOutput['cleaningRules']['list'][number];
 type Checklist = RouterOutput['cleaningChecklists']['list'][number];
+type CleaningCalendar = RouterOutput['cleaningCalendars']['list'][number];
 
-type Tab = 'rules' | 'checklists';
+type Tab = 'rules' | 'checklists' | 'calendars';
 
 export function CleaningPage() {
   const [tab, setTab] = useState<Tab>('rules');
@@ -54,6 +60,11 @@ export function CleaningPage() {
                   id: 'checklists' as const,
                   label: 'Checklisten',
                   icon: ListChecks,
+                },
+                {
+                  id: 'calendars' as const,
+                  label: 'Kalender-Links',
+                  icon: Link2,
                 },
               ]
             ).map(({ id, label, icon: Icon }) => (
@@ -78,7 +89,9 @@ export function CleaningPage() {
           </div>
         }
       />
-      {tab === 'rules' ? <RulesView /> : <ChecklistsView />}
+      {tab === 'rules' && <RulesView />}
+      {tab === 'checklists' && <ChecklistsView />}
+      {tab === 'calendars' && <CalendarsView />}
     </>
   );
 }
@@ -788,5 +801,504 @@ function InfoCard({
       <h3 className="display text-[20px] font-medium text-ink">{title}</h3>
       <p className="mt-2 text-[13px] text-muted leading-relaxed">{body}</p>
     </Card>
+  );
+}
+
+// ─── Cleaning Calendars (public read-only share links) ─────────────────────
+
+function CalendarsView() {
+  const utils = trpc.useUtils();
+  const calsQ = trpc.cleaningCalendars.list.useQuery();
+  const propsQ = trpc.properties.list.useQuery();
+
+  const [editing, setEditing] = useState<CleaningCalendar | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const del = trpc.cleaningCalendars.delete.useMutation({
+    onSuccess: () => {
+      toast.success('Kalender-Link gelöscht');
+      void utils.cleaningCalendars.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const regen = trpc.cleaningCalendars.regenerateSlug.useMutation({
+    onSuccess: () => {
+      toast.success('Neue URL erzeugt — alte ist sofort ungültig');
+      void utils.cleaningCalendars.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const toggleActive = trpc.cleaningCalendars.update.useMutation({
+    onSuccess: () => void utils.cleaningCalendars.list.invalidate(),
+    onError: (e) => toast.error(e.message),
+  });
+
+  const properties = propsQ.data ?? [];
+  const isLoading = calsQ.isLoading || propsQ.isLoading;
+
+  return (
+    <div className="px-8 py-7 space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[13px] text-muted leading-relaxed max-w-prose">
+          Erzeuge anpassbare Read-Only-Kalender-Links für deine Putzkräfte. Pro
+          Link wählst du welche Apartments und Felder sichtbar sind. Kein
+          Login, keine Navigation in den Channel Manager.
+        </p>
+        <Button
+          variant="brand"
+          size="sm"
+          iconLeft={<Plus className="h-3.5 w-3.5" />}
+          onClick={() => setCreating(true)}
+        >
+          Neuer Kalender-Link
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2].map((i) => (
+            <Skeleton key={i} className="h-20 w-full" />
+          ))}
+        </div>
+      ) : (calsQ.data ?? []).length === 0 ? (
+        <Card className="p-8 text-center">
+          <Link2 className="h-6 w-6 mx-auto text-muted" strokeWidth={1.75} />
+          <h3 className="display text-[18px] mt-3 text-ink">
+            Noch keine Kalender-Links
+          </h3>
+          <p className="mt-1 text-[13px] text-muted">
+            Erstelle deinen ersten Link, um ihn an die Putzkraft weiterzugeben.
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-2.5">
+          {(calsQ.data ?? []).map((c) => (
+            <CalendarRow
+              key={c.id}
+              calendar={c}
+              properties={properties}
+              onEdit={() => setEditing(c)}
+              onToggleActive={(v) =>
+                toggleActive.mutate({ id: c.id, isActive: v })
+              }
+              onRegenerate={() =>
+                regen.mutate({ id: c.id })
+              }
+              onDelete={() => {
+                if (
+                  confirm(
+                    `Kalender-Link "${c.name}" wirklich löschen? Die URL wird sofort ungültig.`,
+                  )
+                ) {
+                  del.mutate({ id: c.id });
+                }
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {(creating || editing) && (
+        <CalendarEditorDialog
+          calendar={editing}
+          properties={properties}
+          onClose={() => {
+            setCreating(false);
+            setEditing(null);
+          }}
+          onSaved={() => {
+            void utils.cleaningCalendars.list.invalidate();
+            setCreating(false);
+            setEditing(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CalendarRow({
+  calendar,
+  properties,
+  onEdit,
+  onToggleActive,
+  onRegenerate,
+  onDelete,
+}: {
+  calendar: CleaningCalendar;
+  properties: { id: string; name: string }[];
+  onEdit: () => void;
+  onToggleActive: (v: boolean) => void;
+  onRegenerate: () => void;
+  onDelete: () => void;
+}) {
+  const url =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/cal/${calendar.slug}`
+      : `/cal/${calendar.slug}`;
+
+  const propCount =
+    calendar.propertyIds.length === 0
+      ? properties.length
+      : calendar.propertyIds.length;
+  const propsLabel =
+    calendar.propertyIds.length === 0
+      ? `Alle ${properties.length} Apartments`
+      : `${propCount} Apartment${propCount === 1 ? '' : 's'}`;
+
+  async function copyUrl() {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('URL kopiert');
+    } catch {
+      toast.error('Kopieren fehlgeschlagen');
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-line bg-surface p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <h4 className="text-[14.5px] font-medium text-ink truncate">
+            {calendar.name}
+          </h4>
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10.5px] uppercase tracking-wider font-semibold flex-shrink-0',
+              calendar.isActive
+                ? 'bg-positive-soft text-positive border border-positive/30'
+                : 'bg-sunken text-muted border border-line',
+            )}
+          >
+            {calendar.isActive ? (
+              <>
+                <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                Online
+              </>
+            ) : (
+              <>
+                <X className="h-2.5 w-2.5" strokeWidth={3} />
+                Offline
+              </>
+            )}
+          </span>
+        </div>
+        <div className="mt-1 text-[12px] text-muted">{propsLabel}</div>
+        <button
+          type="button"
+          onClick={copyUrl}
+          className="mt-2 inline-flex items-center gap-1.5 max-w-full text-[11.5px] font-mono text-ink-soft hover:text-ink truncate"
+          title="Klicken zum Kopieren"
+        >
+          <Copy className="h-3 w-3 flex-shrink-0" />
+          <span className="truncate">{url}</span>
+        </button>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <Switch
+          checked={calendar.isActive}
+          onChange={onToggleActive}
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          iconLeft={<RefreshCw className="h-3.5 w-3.5" />}
+          onClick={onRegenerate}
+          title="Neue URL erzeugen (alte sofort ungültig)"
+        >
+          <span className="hidden sm:inline">Neue URL</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconLeft={<Pencil className="h-3.5 w-3.5" />}
+          onClick={onEdit}
+        >
+          <span className="hidden sm:inline">Bearbeiten</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconLeft={<Trash2 className="h-3.5 w-3.5" />}
+          onClick={onDelete}
+        >
+          <span className="hidden sm:inline">Löschen</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function CalendarEditorDialog({
+  calendar,
+  properties,
+  onClose,
+  onSaved,
+}: {
+  calendar: CleaningCalendar | null;
+  properties: { id: string; name: string }[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isEdit = !!calendar;
+  const [name, setName] = useState(calendar?.name ?? '');
+  const [allApartments, setAllApartments] = useState(
+    calendar ? calendar.propertyIds.length === 0 : true,
+  );
+  const [selectedIds, setSelectedIds] = useState<string[]>(
+    calendar?.propertyIds ?? [],
+  );
+
+  const [showGuestName, setShowGuestName] = useState(
+    calendar?.showGuestName ?? true,
+  );
+  const [showGuestCount, setShowGuestCount] = useState(
+    calendar?.showGuestCount ?? false,
+  );
+  const [showGuestPhone, setShowGuestPhone] = useState(
+    calendar?.showGuestPhone ?? false,
+  );
+  const [showGuestEmail, setShowGuestEmail] = useState(
+    calendar?.showGuestEmail ?? false,
+  );
+  const [showNotes, setShowNotes] = useState(calendar?.showNotes ?? false);
+  const [showHostNotes, setShowHostNotes] = useState(
+    calendar?.showHostNotes ?? false,
+  );
+  const [showPrice, setShowPrice] = useState(calendar?.showPrice ?? false);
+  const [showBookingCode, setShowBookingCode] = useState(
+    calendar?.showBookingCode ?? false,
+  );
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const create = trpc.cleaningCalendars.create.useMutation({
+    onSuccess: () => {
+      toast.success('Kalender-Link erstellt');
+      onSaved();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const update = trpc.cleaningCalendars.update.useMutation({
+    onSuccess: () => {
+      toast.success('Änderungen gespeichert');
+      onSaved();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const pending = create.isPending || update.isPending;
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    const payload = {
+      name: name.trim(),
+      propertyIds: allApartments ? [] : selectedIds,
+      showGuestName,
+      showGuestCount,
+      showGuestPhone,
+      showGuestEmail,
+      showNotes,
+      showHostNotes,
+      showPrice,
+      showBookingCode,
+    };
+    if (isEdit && calendar) {
+      update.mutate({ id: calendar.id, ...payload });
+    } else {
+      create.mutate(payload);
+    }
+  }
+
+  function toggleId(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
+
+  const validApartmentChoice =
+    allApartments || selectedIds.length > 0;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:px-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
+      <div
+        className="relative w-full sm:max-w-[560px] bg-surface rounded-t-2xl sm:rounded-xl shadow-lg border border-line animate-fade-up max-h-[92dvh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 pt-6 pb-2">
+          <h2 className="display text-[22px] font-medium text-ink">
+            {isEdit ? 'Kalender-Link bearbeiten' : 'Neuer Kalender-Link'}
+          </h2>
+          <p className="mt-1 text-[13px] text-muted">
+            {isEdit
+              ? 'Änderungen wirken sofort auf die geteilte URL.'
+              : 'Wähle Apartments und Felder. Die URL erzeugen wir beim Speichern.'}
+          </p>
+        </div>
+
+        <form onSubmit={submit} className="px-6 pb-6 pt-3 space-y-5">
+          <div className="space-y-1.5">
+            <Label htmlFor="cal-name">Name (intern)</Label>
+            <Input
+              id="cal-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="z. B. Putzkraft Team A, Frau Müller"
+              maxLength={80}
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <Label>Welche Apartments?</Label>
+            <div className="mt-2 rounded-lg border border-line p-3.5 space-y-2.5">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="apt-scope"
+                  checked={allApartments}
+                  onChange={() => setAllApartments(true)}
+                  className="accent-brand"
+                />
+                <span className="text-[13px] text-ink">
+                  Alle Apartments ({properties.length}) — auch neu angelegte erscheinen automatisch
+                </span>
+              </label>
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="apt-scope"
+                  checked={!allApartments}
+                  onChange={() => setAllApartments(false)}
+                  className="accent-brand"
+                />
+                <span className="text-[13px] text-ink">
+                  Nur ausgewählte Apartments
+                </span>
+              </label>
+              {!allApartments && (
+                <div className="ml-6 mt-1.5 grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-[180px] overflow-y-auto pr-2">
+                  {properties.map((p) => (
+                    <label
+                      key={p.id}
+                      className="flex items-center gap-1.5 text-[12.5px] text-ink cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(p.id)}
+                        onChange={() => toggleId(p.id)}
+                        className="accent-brand"
+                      />
+                      <span className="truncate">{p.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <Label>Welche Felder sind sichtbar?</Label>
+            <div className="mt-2 rounded-lg border border-line p-3.5 space-y-2.5">
+              <FieldRow
+                label="Gastname"
+                value={showGuestName}
+                onChange={setShowGuestName}
+              />
+              <FieldRow
+                label="Anzahl Gäste"
+                value={showGuestCount}
+                onChange={setShowGuestCount}
+              />
+              <FieldRow
+                label="Handynummer"
+                value={showGuestPhone}
+                onChange={setShowGuestPhone}
+                muted="Datenschutz beachten"
+              />
+              <FieldRow
+                label="E-Mail-Adresse"
+                value={showGuestEmail}
+                onChange={setShowGuestEmail}
+                muted="Datenschutz beachten"
+              />
+              <FieldRow
+                label="Buchungs-Notiz (vom Gast / OTA)"
+                value={showNotes}
+                onChange={setShowNotes}
+              />
+              <FieldRow
+                label="Host-Notiz (deine interne)"
+                value={showHostNotes}
+                onChange={setShowHostNotes}
+              />
+              <FieldRow
+                label="Preis"
+                value={showPrice}
+                onChange={setShowPrice}
+              />
+              <FieldRow
+                label="Buchungs-Code (OTA-Referenz)"
+                value={showBookingCode}
+                onChange={setShowBookingCode}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+              disabled={pending}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              type="submit"
+              variant="brand"
+              loading={pending}
+              disabled={!name.trim() || !validApartmentChoice || pending}
+            >
+              {isEdit ? 'Speichern' : 'Erstellen'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function FieldRow({
+  label,
+  value,
+  onChange,
+  muted,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+  muted?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="text-[13px] text-ink">
+        {label}
+        {muted && (
+          <span className="ml-1.5 text-[11px] text-muted">· {muted}</span>
+        )}
+      </div>
+      <Switch checked={value} onChange={onChange} />
+    </div>
   );
 }

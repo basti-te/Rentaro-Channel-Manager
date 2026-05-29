@@ -12,6 +12,7 @@ import { messageVariablesRouter } from './routers/message-variables';
 import { teammatesRouter } from './routers/teammates';
 import { cleaningChecklistsRouter } from './routers/cleaning-checklists';
 import { cleaningRulesRouter } from './routers/cleaning-rules';
+import { cleaningCalendarsRouter } from './routers/cleaning-calendars';
 import { billingRouter } from './routers/billing';
 
 export const appRouter = router({
@@ -28,6 +29,7 @@ export const appRouter = router({
   teammates: teammatesRouter,
   cleaningChecklists: cleaningChecklistsRouter,
   cleaningRules: cleaningRulesRouter,
+  cleaningCalendars: cleaningCalendarsRouter,
   billing: billingRouter,
 });
 
