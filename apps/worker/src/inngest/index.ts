@@ -8,6 +8,7 @@ import { cleaningDispatch } from './functions/cleaning-dispatch';
 import { stripeEvent } from './functions/stripe-event';
 import { billingReconcile } from './functions/billing-reconcile';
 import { channexFullSync } from './functions/channex-full-sync';
+import { outboundReviewsDispatch } from './functions/outbound-reviews-dispatch';
 
 /**
  * All functions Inngest should serve. Add new ones here.
@@ -26,4 +27,5 @@ export const inngestFunctions = [
   stripeEvent,
   billingReconcile,
   channexFullSync,
+  outboundReviewsDispatch,
 ];

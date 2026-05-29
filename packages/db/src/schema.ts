@@ -11,6 +11,7 @@
  * After changing this file, run: pnpm db:generate
  */
 
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
   pgEnum,
@@ -905,6 +906,13 @@ export type CleaningMessage = typeof cleaningMessages.$inferSelect;
 // Reviews (Phase 11)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Templates the operator pre-writes for outbound guest reviews
+ * (the host-to-guest direction — what WE say about the guest after they
+ * leave). The auto-dispatch picks the row where `is_default=true` for the
+ * matching language; additional non-default rows can be picked manually
+ * per booking in the UI.
+ */
 export const reviewTemplates = pgTable(
   'review_templates',
   {
@@ -915,14 +923,84 @@ export const reviewTemplates = pgTable(
     name: text('name').notNull(),
     language: text('language').notNull().default('de'),
     body: text('body').notNull(),
-    minRating: integer('min_rating'), // only suggest if guest rated >= this
+    /** Overall star rating 1-5 the dispatch should use. */
+    starRating: integer('star_rating').notNull().default(5),
+    /** If true, this is the auto-pick for the language. Only one per
+     *  (tenant, language) should hold true; enforced by partial unique idx. */
+    isDefault: boolean('is_default').notNull().default(false),
+    /** Legacy fields kept for backward-compat with the older schema. */
+    minRating: integer('min_rating'),
     autoSend: boolean('auto_send').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     byTenant: index('review_templates_tenant_idx').on(t.tenantId),
+    oneDefaultPerLanguage: uniqueIndex('review_templates_one_default_idx')
+      .on(t.tenantId, t.language)
+      .where(sql`${t.isDefault} = true`),
   }),
 );
+
+/**
+ * Outbound (host-to-guest) review queue. One row per booking that
+ * `outbound-reviews-dispatch` has decided to act on. Lifecycle:
+ *
+ *   queued     — created by the dispatch cron, scheduled_at = checkout+3d
+ *   sent       — successfully submitted to Channex (channex_review_id set)
+ *   failed     — Channex rejected; `error` carries the message; retry-able
+ *   skipped    — operator clicked "Überspringen" in the UI
+ *
+ * A booking is never queued twice (unique on booking_id). If the operator
+ * disables auto-review on the booking after we queued, the dispatch will
+ * cancel the queued row on the next pass.
+ */
+export const outboundReviews = pgTable(
+  'outbound_reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'cascade' })
+      .unique(),
+    propertyId: uuid('property_id').references(() => properties.id, {
+      onDelete: 'set null',
+    }),
+    templateId: uuid('template_id').references(() => reviewTemplates.id, {
+      onDelete: 'set null',
+    }),
+    /** The rendered text (template + booking vars substituted). */
+    renderedText: text('rendered_text').notNull(),
+    /** Overall rating 1-5 we'll submit alongside the text. */
+    starRating: integer('star_rating').notNull(),
+    /** queued | sent | failed | skipped */
+    status: text('status').notNull().default('queued'),
+    /** When this row becomes eligible for actual submission. */
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    /** Channex' review id if the submission succeeded. */
+    channexReviewId: text('channex_review_id'),
+    /** Last error message if status='failed'. */
+    error: text('error'),
+    /** Operator who skipped this row (if status='skipped'). */
+    skippedBy: uuid('skipped_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byTenant: index('outbound_reviews_tenant_idx').on(t.tenantId),
+    byBooking: index('outbound_reviews_booking_idx').on(t.bookingId),
+    byStatusSchedule: index('outbound_reviews_due_idx').on(t.status, t.scheduledAt),
+  }),
+);
+
+export type ReviewTemplate = typeof reviewTemplates.$inferSelect;
+export type NewReviewTemplate = typeof reviewTemplates.$inferInsert;
+export type OutboundReview = typeof outboundReviews.$inferSelect;
+export type NewOutboundReview = typeof outboundReviews.$inferInsert;
 
 export const reviews = pgTable(
   'reviews',

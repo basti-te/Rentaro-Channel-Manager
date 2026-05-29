@@ -134,6 +134,13 @@
       "when": 1780069709491,
       "tag": "0018_early_bill_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780072985177,
+      "tag": "0019_magical_wonder_man",
+      "breakpoints": true
     }
   ]
 }

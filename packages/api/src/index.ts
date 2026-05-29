@@ -13,6 +13,8 @@ import { teammatesRouter } from './routers/teammates';
 import { cleaningChecklistsRouter } from './routers/cleaning-checklists';
 import { cleaningRulesRouter } from './routers/cleaning-rules';
 import { cleaningCalendarsRouter } from './routers/cleaning-calendars';
+import { reviewTemplatesRouter } from './routers/review-templates';
+import { outboundReviewsRouter } from './routers/outbound-reviews';
 import { billingRouter } from './routers/billing';
 
 export const appRouter = router({
@@ -30,6 +32,8 @@ export const appRouter = router({
   cleaningChecklists: cleaningChecklistsRouter,
   cleaningRules: cleaningRulesRouter,
   cleaningCalendars: cleaningCalendarsRouter,
+  reviewTemplates: reviewTemplatesRouter,
+  outboundReviews: outboundReviewsRouter,
   billing: billingRouter,
 });
 
