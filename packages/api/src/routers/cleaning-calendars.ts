@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { and, asc, between, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte, ne } from 'drizzle-orm';
 import {
   bookings,
   cleaningCalendars,
@@ -256,6 +256,13 @@ export const cleaningCalendarsRouter = router({
         .where(eq(propertyGroups.tenantId, cal.tenantId))
         .orderBy(asc(propertyGroups.sortOrder), asc(propertyGroups.name));
 
+      // Overlap, not check-in-in-window: a stay that STARTED before `from`
+      // but is still running (checkout >= from) must show — its turnover /
+      // cleaning is exactly what staff need to see. A booking overlaps
+      // [from, to] iff checkin <= to AND checkout >= from. (Using `between`
+      // on checkin alone silently dropped every in-progress stay — the cause
+      // of the "missing bookings / old state" report.) Cancelled rows are
+      // excluded in SQL so the count is right before scrubbing.
       const rawBookings =
         propertyIdFilter.length === 0
           ? []
@@ -265,15 +272,16 @@ export const cleaningCalendarsRouter = router({
               .where(
                 and(
                   inArray(bookings.propertyId, propertyIdFilter),
-                  between(bookings.checkin, input.from, input.to),
+                  ne(bookings.status, 'cancelled'),
+                  lte(bookings.checkin, input.to),
+                  gte(bookings.checkout, input.from),
                 ),
               )
               .orderBy(asc(bookings.checkin));
 
       // Server-side scrubbing — hidden fields are nulled before the
-      // payload ever leaves this process. Cancelled bookings drop out.
+      // payload ever leaves this process.
       const sanitised = rawBookings
-        .filter((b) => b.status !== 'cancelled')
         .map((b) => ({
           id: b.id,
           propertyId: b.propertyId,
