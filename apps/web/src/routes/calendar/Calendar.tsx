@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format } from 'date-fns';
 import { cn } from '@cm/ui';
 import {
@@ -80,6 +80,14 @@ interface Props {
   onSyncProperty?: (propertyId: string) => void;
   /** propertyIds whose sync-button should appear disabled (mutation in flight). */
   pendingSyncProperties?: Set<string>;
+  /**
+   * Make "today" markedly more visible (stronger fill + accent + a bolder
+   * vertical line) AND auto-center today in the viewport whenever the range
+   * changes. Used by the shared public cleaning calendar, where staff scan for
+   * the current day at a glance and the "Heute" button must land on it (esp.
+   * on mobile). The operator view leaves this off.
+   */
+  emphasizeToday?: boolean;
 }
 
 interface PendingSelection {
@@ -102,6 +110,7 @@ export function Calendar({
   onBookingClick,
   onSyncProperty,
   pendingSyncProperties,
+  emphasizeToday = false,
 }: Props) {
   const days = useMemo(() => buildDays(start, dayCount), [start, dayCount]);
   const months = useMemo(() => monthSpans(days), [days]);
@@ -110,6 +119,23 @@ export function Calendar({
     () => days.findIndex((d) => isSameDay(d, today)),
     [days, today],
   );
+
+  // Auto-scroll today into view. Only active for `emphasizeToday` (the public
+  // cleaning calendar); the operator view is left exactly as-is. Runs on mount
+  // and whenever the range (`start`) changes — the "Heute" button always sets a
+  // fresh anchor, so this re-centers even when today's index is unchanged
+  // (the bug on mobile: tapping Heute did nothing). Centering only moves
+  // anything when the grid overflows horizontally (mobile); on wide screens
+  // the clamp keeps scrollLeft at 0.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!emphasizeToday) return;
+    const el = scrollRef.current;
+    if (!el || todayIdx < 0) return;
+    const visibleGrid = el.clientWidth - RAIL_W;
+    const target = todayIdx * DAY_W - Math.max(0, (visibleGrid - DAY_W) / 2);
+    el.scrollLeft = Math.max(0, target);
+  }, [emphasizeToday, todayIdx, start, dayCount]);
 
   // ── Selection (click + drag, long-press on touch) ───────────────────────
   const [pending, setPending] = useState<PendingSelection | null>(null);
@@ -316,6 +342,7 @@ export function Calendar({
 
   return (
     <div
+      ref={scrollRef}
       className={cn(
         'relative overflow-auto bg-canvas border-t border-line',
         // Mobile: subtract page header (156px) AND bottom tab bar (--mobile-bar-h).
@@ -329,6 +356,7 @@ export function Calendar({
           days={days}
           months={months}
           todayIdx={todayIdx}
+          emphasizeToday={emphasizeToday}
         />
 
         {/* ── Property sections ───────────────────────────────────────── */}
@@ -358,6 +386,7 @@ export function Calendar({
                   groupColor={s.group?.color}
                   days={days}
                   todayIdx={todayIdx}
+                  emphasizeToday={emphasizeToday}
                   bookings={bookingsByProperty.get(p.id) ?? []}
                   occupied={occupiedByProperty.get(p.id) ?? new Set()}
                   overrides={overridesByProperty?.get(p.id)}
@@ -386,10 +415,12 @@ function DayHeader({
   days,
   months,
   todayIdx,
+  emphasizeToday,
 }: {
   days: Date[];
   months: Array<{ label: string; startIdx: number; count: number }>;
   todayIdx: number;
+  emphasizeToday: boolean;
 }) {
   return (
     <div className="sticky top-0 z-30 bg-canvas/90 backdrop-blur-[3px] border-b border-line">
@@ -429,7 +460,8 @@ function DayHeader({
                 className={cn(
                   'flex flex-col items-center justify-center border-r border-line/60',
                   wknd && 'bg-sunken/50',
-                  isToday && 'bg-brand-soft',
+                  isToday &&
+                    (emphasizeToday ? 'bg-brand/20 border-b-2 border-brand' : 'bg-brand-soft'),
                 )}
                 style={{ width: DAY_W }}
               >
@@ -465,6 +497,7 @@ function PropertyRow({
   groupColor,
   days,
   todayIdx,
+  emphasizeToday,
   bookings,
   occupied,
   overrides,
@@ -482,6 +515,7 @@ function PropertyRow({
   groupColor: string | undefined;
   days: Date[];
   todayIdx: number;
+  emphasizeToday: boolean;
   bookings: Booking[];
   occupied: Set<number>;
   overrides: Map<number, OverrideCell> | undefined;
@@ -542,7 +576,7 @@ function PropertyRow({
                 'flex flex-col items-center justify-center',
                 'border-r border-b border-line/60',
                 wknd && 'bg-sunken/30',
-                isToday && 'bg-brand-soft/40',
+                isToday && (emphasizeToday ? 'bg-brand/15' : 'bg-brand-soft/40'),
                 isFree && 'cursor-pointer hover:bg-brand-soft/40 transition-colors',
                 inRange && 'bg-brand-soft/80 hover:bg-brand-soft/80',
                 stopSell && !inRange && 'bg-negative-soft/50',
@@ -587,11 +621,14 @@ function PropertyRow({
           );
         })}
 
-        {/* Today vertical line — overlay across the row */}
+        {/* Today vertical line — overlay across the row. Bolder when emphasized. */}
         {todayIdx >= 0 && (
           <div
             aria-hidden
-            className="absolute top-0 bottom-0 w-px bg-brand pointer-events-none opacity-30"
+            className={cn(
+              'absolute top-0 bottom-0 bg-brand pointer-events-none',
+              emphasizeToday ? 'w-0.5 opacity-60' : 'w-px opacity-30',
+            )}
             style={{ left: todayIdx * DAY_W }}
           />
         )}
