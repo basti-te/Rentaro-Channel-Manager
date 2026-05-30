@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import {
   Check,
@@ -13,6 +14,8 @@ import {
   Trash2,
   AlertTriangle,
   FolderPlus,
+  Plug,
+  X,
 } from 'lucide-react';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@cm/api';
@@ -24,6 +27,7 @@ import { Label } from '../components/ui/Label';
 import { Card, CardBody } from '../components/ui/Card';
 import { Skeleton } from '../components/ui/Skeleton';
 import { PageHeader } from './_dashboard';
+import { ChannelMappingFrame } from '../components/ChannelMappingFrame';
 import {
   CURRENCY_FALLBACK,
   currencyName,
@@ -45,6 +49,7 @@ const GROUP_COLORS = [
 
 export function ApartmentsPage() {
   const utils = trpc.useUtils();
+  const nav = useNavigate();
   const propsQ = trpc.properties.list.useQuery();
   const groupsQ = trpc.propertyGroups.list.useQuery();
   // Dev-only: which connected properties can receive a simulated booking
@@ -93,6 +98,13 @@ export function ApartmentsPage() {
               onClick={() => fullSyncAll.mutate()}
             >
               Alle synchronisieren
+            </Button>
+            <Button
+              variant="secondary"
+              iconLeft={<Plug className="h-4 w-4" />}
+              onClick={() => nav({ to: '/channels' })}
+            >
+              Kanäle
             </Button>
             <Button
               variant="secondary"
@@ -511,6 +523,7 @@ function PropertyRowItem({
   });
 
   const [showSimulate, setShowSimulate] = useState(false);
+  const [showChannels, setShowChannels] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -631,6 +644,16 @@ function PropertyRowItem({
                 type="button"
                 variant="secondary"
                 size="sm"
+                iconLeft={<Plug className="h-3.5 w-3.5" />}
+                onClick={() => setShowChannels(true)}
+                title="Airbnb / Booking.com / Vrbo Listings verbinden"
+              >
+                Kanäle
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
                 loading={fullSyncMut.isPending}
                 iconLeft={<RefreshCw className="h-3.5 w-3.5" />}
                 onClick={() => fullSyncMut.mutate({ propertyId: property.id })}
@@ -730,6 +753,14 @@ function PropertyRowItem({
           propertyId={property.id}
           propertyName={property.name}
           onClose={() => setShowSimulate(false)}
+        />
+      )}
+
+      {showChannels && (
+        <ChannelsDialog
+          propertyId={property.id}
+          propertyName={property.name}
+          onClose={() => setShowChannels(false)}
         />
       )}
 

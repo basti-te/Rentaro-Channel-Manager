@@ -15,6 +15,7 @@ import { DatenschutzPage } from './routes/datenschutz';
 import { DashboardLayout } from './routes/_dashboard';
 import { OverviewPage } from './routes/overview';
 import { ApartmentsPage } from './routes/apartments';
+import { ChannelsPage } from './routes/channels';
 import { CalendarPage } from './routes/calendar';
 import { MessagesPage } from './routes/messages';
 import { CleaningPage } from './routes/cleaning';
@@ -93,6 +94,12 @@ const apartmentsRoute = createRoute({
   component: ApartmentsPage,
 });
 
+const channelsRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/channels',
+  component: ChannelsPage,
+});
+
 const calendarRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: '/calendar',
@@ -133,6 +140,7 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute.addChildren([
     overviewRoute,
     apartmentsRoute,
+    channelsRoute,
     calendarRoute,
     messagesRoute,
     cleaningRoute,

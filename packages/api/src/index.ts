@@ -16,6 +16,7 @@ import { cleaningCalendarsRouter } from './routers/cleaning-calendars';
 import { reviewTemplatesRouter } from './routers/review-templates';
 import { outboundReviewsRouter } from './routers/outbound-reviews';
 import { billingRouter } from './routers/billing';
+import { channelsRouter } from './routers/channels';
 
 export const appRouter = router({
   me: meRouter,
@@ -35,6 +36,7 @@ export const appRouter = router({
   reviewTemplates: reviewTemplatesRouter,
   outboundReviews: outboundReviewsRouter,
   billing: billingRouter,
+  channels: channelsRouter,
 });
 
 export type AppRouter = typeof appRouter;

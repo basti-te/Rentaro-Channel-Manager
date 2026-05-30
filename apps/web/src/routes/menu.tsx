@@ -3,6 +3,7 @@ import {
   Building2,
   LayoutGrid,
   LogOut,
+  Plug,
   Settings,
   Star,
   ChevronRight,
@@ -28,6 +29,7 @@ interface MenuLink {
 const LINKS: MenuLink[] = [
   { to: '/overview',   label: 'Übersicht',    icon: LayoutGrid, description: 'Stats und Schnellzugriffe' },
   { to: '/apartments', label: 'Apartments',   icon: Building2,  description: 'Inventar verwalten, Gruppen, Mapping' },
+  { to: '/channels',   label: 'Kanäle',       icon: Plug,       description: 'Airbnb / Booking.com Listings verbinden' },
   { to: '/settings',   label: 'Einstellungen',icon: Settings,   description: 'Account, Abo, Listings, Rechnungen', badge: 'soon', disabled: true },
   { to: '/reviews',    label: 'Bewertungen',  icon: Star,       description: 'Auto-Review-Regeln, Freigabe-Logik',   badge: 'soon', disabled: true },
 ];

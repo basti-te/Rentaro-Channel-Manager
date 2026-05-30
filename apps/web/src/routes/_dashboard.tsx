@@ -5,6 +5,7 @@ import {
   Calendar,
   LayoutGrid,
   MessageSquare,
+  Plug,
   Settings,
   SprayCan,
   LogOut,
@@ -32,6 +33,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: '/calendar',   label: 'Calendar',   icon: Calendar },
   { to: '/apartments', label: 'Apartments', icon: Building2 },
+  { to: '/channels',   label: 'Kanäle',     icon: Plug },
   { to: '/overview',   label: 'Overview',   icon: LayoutGrid },
   { to: '/messages',   label: 'Messages',   icon: MessageSquare },
   { to: '/cleaning',   label: 'Cleaning',   icon: SprayCan },
