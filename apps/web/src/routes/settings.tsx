@@ -77,6 +77,12 @@ export function SettingsPage() {
               disabled={!isAdmin}
               onSaved={() => utils.settings.tenant.invalidate()}
             />
+            <NotificationsSection
+              data={tenantQ.data}
+              ownerEmail={meQ.data?.user?.email ?? null}
+              disabled={!isAdmin}
+              onSaved={() => utils.settings.tenant.invalidate()}
+            />
             <TeammatesSection disabled={!isAdmin} />
             <ReviewTemplatesSection disabled={!isAdmin} />
             <BillingCard context="settings" />
@@ -419,6 +425,179 @@ function SmsSenderSection({
           )}
         </div>
       )}
+    </SectionCard>
+  );
+}
+
+function NotifyToggleRow({
+  label,
+  desc,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  desc: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+      <div className="min-w-0">
+        <div className="text-[13.5px] text-ink">{label}</div>
+        <div className="text-[12px] text-muted">{desc}</div>
+      </div>
+      <Switch
+        size="sm"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        aria-label={label}
+      />
+    </div>
+  );
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function NotificationsSection({
+  data,
+  ownerEmail,
+  disabled,
+  onSaved,
+}: {
+  data: TenantData;
+  ownerEmail: string | null;
+  disabled: boolean;
+  onSaved: () => void;
+}) {
+  const [email, setEmail] = useState(data.notifyEmail ?? '');
+  const [newBooking, setNewBooking] = useState(data.notifyNewBooking);
+  const [cancellation, setCancellation] = useState(data.notifyCancellation);
+  const [modification, setModification] = useState(data.notifyModification);
+  const [syncError, setSyncError] = useState(data.notifySyncError);
+
+  // Re-seed if the query refetches with new values.
+  useEffect(() => {
+    setEmail(data.notifyEmail ?? '');
+    setNewBooking(data.notifyNewBooking);
+    setCancellation(data.notifyCancellation);
+    setModification(data.notifyModification);
+    setSyncError(data.notifySyncError);
+  }, [data]);
+
+  const save = trpc.settings.setNotifications.useMutation({
+    onSuccess: () => {
+      toast.success('Benachrichtigungen gespeichert');
+      onSaved();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const trimmed = email.trim();
+  const noEmail = trimmed === '';
+  const emailValid = noEmail || EMAIL_RE.test(trimmed);
+  const dirty =
+    trimmed !== (data.notifyEmail ?? '') ||
+    newBooking !== data.notifyNewBooking ||
+    cancellation !== data.notifyCancellation ||
+    modification !== data.notifyModification ||
+    syncError !== data.notifySyncError;
+
+  return (
+    <SectionCard
+      title="Benachrichtigungen"
+      desc="E-Mail-Benachrichtigungen bei wichtigen Ereignissen. Leeres Adressfeld = deaktiviert."
+    >
+      <div className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="notify-email">Ziel-E-Mail-Adresse</Label>
+          <Input
+            id="notify-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={ownerEmail ?? 'name@beispiel.de'}
+            disabled={disabled}
+            className="max-w-[360px]"
+            aria-invalid={!emailValid}
+          />
+          {!emailValid ? (
+            <p className="text-[11.5px] text-negative">
+              Bitte eine gültige E-Mail-Adresse eingeben.
+            </p>
+          ) : noEmail ? (
+            <p className="text-[11.5px] text-whisper">
+              Keine Adresse hinterlegt — es werden keine Benachrichtigungen
+              versendet.
+              {ownerEmail && !disabled && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="text-brand hover:underline"
+                    onClick={() => setEmail(ownerEmail)}
+                  >
+                    {ownerEmail} übernehmen
+                  </button>
+                </>
+              )}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-lg border border-line divide-y divide-line">
+          <NotifyToggleRow
+            label="Neue Buchung"
+            desc="Wenn eine neue OTA-Buchung eingeht."
+            checked={newBooking}
+            onChange={setNewBooking}
+            disabled={disabled}
+          />
+          <NotifyToggleRow
+            label="Stornierung"
+            desc="Wenn eine Buchung storniert wird."
+            checked={cancellation}
+            onChange={setCancellation}
+            disabled={disabled}
+          />
+          <NotifyToggleRow
+            label="Buchungsänderung"
+            desc="Wenn sich Daten einer bestehenden Buchung ändern."
+            checked={modification}
+            onChange={setModification}
+            disabled={disabled}
+          />
+          <NotifyToggleRow
+            label="Technische Fehler / Sync"
+            desc="Wenn die Synchronisierung mit Channex fehlschlägt."
+            checked={syncError}
+            onChange={setSyncError}
+            disabled={disabled}
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button
+            variant="brand"
+            size="sm"
+            loading={save.isPending}
+            disabled={disabled || !dirty || !emailValid}
+            onClick={() =>
+              save.mutate({
+                notifyEmail: trimmed,
+                notifyNewBooking: newBooking,
+                notifyCancellation: cancellation,
+                notifyModification: modification,
+                notifySyncError: syncError,
+              })
+            }
+          >
+            Speichern
+          </Button>
+        </div>
+      </div>
     </SectionCard>
   );
 }

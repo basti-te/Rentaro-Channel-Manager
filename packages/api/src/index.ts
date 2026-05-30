@@ -58,6 +58,20 @@ export {
   type TriggerAnchor,
 } from './services/triggers';
 export { sendSms, isTwilioConfigured, type TwilioConfig } from './services/twilio';
+export {
+  sendEmail,
+  isEmailConfigured,
+  type EmailConfig,
+  type EmailMessage,
+  type EmailSendResult,
+} from './services/email';
+export {
+  notifyBookingEvent,
+  notifySyncError,
+  type NotificationKind,
+  type NotifyOutcome,
+  type BookingNotificationContext,
+} from './services/notifications';
 export { isTemplateEnabledForBooking } from './services/scope';
 export { resolveCustomVars, CUSTOM_VAR_KEY_RE } from './services/custom-vars';
 

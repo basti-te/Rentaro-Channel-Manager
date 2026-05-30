@@ -141,6 +141,13 @@
       "when": 1780072985177,
       "tag": "0019_magical_wonder_man",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780139749769,
+      "tag": "0020_aspiring_black_tarantula",
+      "breakpoints": true
     }
   ]
 }

@@ -31,6 +31,11 @@ export const settingsRouter = router({
           defaultCityTaxRateBp: tenants.defaultCityTaxRateBp,
           defaultCheckinTime: tenants.defaultCheckinTime,
           defaultCheckoutTime: tenants.defaultCheckoutTime,
+          notifyEmail: tenants.notifyEmail,
+          notifyNewBooking: tenants.notifyNewBooking,
+          notifyCancellation: tenants.notifyCancellation,
+          notifyModification: tenants.notifyModification,
+          notifySyncError: tenants.notifySyncError,
         })
         .from(tenants)
         .where(eq(tenants.id, ctx.tenantId!))
@@ -172,5 +177,43 @@ export const settingsRouter = router({
         .returning({ smsSenderId: tenants.smsSenderId });
       if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
       return { smsSenderId: row.smsSenderId };
+    }),
+
+  /**
+   * Operator e-mail notifications. One recipient address (empty → off) plus a
+   * per-event-class on/off flag. Delivery happens from the worker via Resend;
+   * if RESEND_* aren't set in the worker env, sends are silently skipped even
+   * when configured here (see services/notifications.ts).
+   */
+  setNotifications: adminProcedure
+    .input(
+      z.object({
+        notifyEmail: z
+          .string()
+          .trim()
+          .max(254)
+          .email('Ungültige E-Mail-Adresse')
+          .or(z.literal('')),
+        notifyNewBooking: z.boolean(),
+        notifyCancellation: z.boolean(),
+        notifyModification: z.boolean(),
+        notifySyncError: z.boolean(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await ctx.db
+        .update(tenants)
+        .set({
+          notifyEmail: input.notifyEmail === '' ? null : input.notifyEmail,
+          notifyNewBooking: input.notifyNewBooking,
+          notifyCancellation: input.notifyCancellation,
+          notifyModification: input.notifyModification,
+          notifySyncError: input.notifySyncError,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, ctx.tenantId!))
+        .returning({ id: tenants.id });
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
+      return { ok: true };
     }),
 });

@@ -28,6 +28,7 @@ import { inArray, isNull } from 'drizzle-orm';
 import type { GetStepTools } from 'inngest';
 import { ariPending, createDb, syncJobs } from '@cm/db';
 import { createChannexClient } from '@cm/channex';
+import { notifySyncError, isEmailConfigured, type EmailConfig } from '@cm/api';
 import { env } from '../../env';
 import { inngest } from '../client';
 import {
@@ -203,6 +204,41 @@ async function runFlush(runId: string, step: Step): Promise<FlushResult> {
 }
 
 /**
+ * Operator alert when a flush has exhausted all its retries. Affected tenants
+ * are exactly those still holding unflushed rows (the failed push left
+ * flushed_at NULL). Best-effort e-mail, gated per tenant by the notify-sync-
+ * error toggle; a no-op when RESEND_* aren't configured. Never throws — this
+ * runs inside Inngest's onFailure handler and must not fail the failure path.
+ */
+async function notifyFlushFailure(error: unknown): Promise<void> {
+  try {
+    const emailConfig: EmailConfig = {
+      apiKey: env.RESEND_API_KEY,
+      from: env.RESEND_FROM,
+    };
+    if (!isEmailConfigured(emailConfig)) return;
+
+    const db = createDb(env.DATABASE_URL);
+    const pending = await db
+      .select({ tenantId: ariPending.tenantId })
+      .from(ariPending)
+      .where(isNull(ariPending.flushedAt));
+    const tenantIds = [...new Set(pending.map((r) => r.tenantId))];
+    const detail = error instanceof Error ? error.message : String(error);
+
+    for (const tenantId of tenantIds) {
+      await notifySyncError(db, emailConfig, {
+        tenantId,
+        summary: 'ARI-Synchronisierung mit Channex fehlgeschlagen',
+        detail,
+      });
+    }
+  } catch {
+    // swallow — notification is best-effort
+  }
+}
+
+/**
  * Event-driven flush. Debounced + throttled GLOBALLY (no key) so the whole
  * PMS shares one outbound ARI stream.
  */
@@ -215,6 +251,10 @@ export const ariFlush = inngest.createFunction(
     // Hard ceiling: ≤6 flush runs per minute, account-wide. Channex allows 20.
     throttle: { limit: 6, period: '1m' },
     retries: 3,
+    // After all retries fail, alert affected tenants' operators by e-mail.
+    onFailure: async ({ error }) => {
+      await notifyFlushFailure(error);
+    },
   },
   { event: 'ari/changed' },
   async ({ runId, step, logger }) => {
@@ -229,7 +269,14 @@ export const ariFlush = inngest.createFunction(
  * that failed all its retries). Delta-only — never a full resync.
  */
 export const ariFlushCron = inngest.createFunction(
-  { id: 'ari-flush-cron', name: 'ARI outbox drain (safety net)', retries: 2 },
+  {
+    id: 'ari-flush-cron',
+    name: 'ARI outbox drain (safety net)',
+    retries: 2,
+    onFailure: async ({ error }) => {
+      await notifyFlushFailure(error);
+    },
+  },
   { cron: '*/5 * * * *' },
   async ({ runId, step, logger }) => {
     const res = await runFlush(runId, step);

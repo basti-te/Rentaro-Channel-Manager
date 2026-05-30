@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { bookings, channexProperties, createDb } from '@cm/db';
 import { createChannexClient, ChannexError, type Booking as ChannexBooking } from '@cm/channex';
+import { notifyBookingEvent, type EmailConfig } from '@cm/api';
 import { env } from '../../env';
 import { inngest } from '../client';
 import { mapChannexBooking } from './channex-booking-mapper';
@@ -37,6 +38,13 @@ export const ingestBookings = inngest.createFunction(
       baseUrl: env.CHANNEX_API_URL,
       apiKey: env.CHANNEX_API_KEY,
     });
+
+    // Operator e-mail notifications (best-effort). Built once; degrades to a
+    // silent no-op when RESEND_* aren't set.
+    const emailConfig: EmailConfig = {
+      apiKey: env.RESEND_API_KEY,
+      from: env.RESEND_FROM,
+    };
 
     let totalProcessed = 0;
     let totalSkipped = 0;
@@ -101,8 +109,8 @@ export const ingestBookings = inngest.createFunction(
           // Find the internal property linked to this channex_property
           // (1:1 via properties.channex_property_ref)
           const internalProperty = (
-            await db.execute<{ id: string }>(sql`
-              SELECT id FROM properties
+            await db.execute<{ id: string; name: string }>(sql`
+              SELECT id, name FROM properties
                WHERE tenant_id = ${mapping.tenantId}
                  AND channex_property_ref = ${mapping.channexPropertiesId}
                LIMIT 1
@@ -111,6 +119,42 @@ export const ingestBookings = inngest.createFunction(
 
           if (!internalProperty) {
             return { skipped: true, reason: 'no_internal_property' } as const;
+          }
+
+          // Classify the event for the operator notification, comparing
+          // against any existing row BEFORE the upsert overwrites it.
+          const existing = (
+            await db
+              .select({
+                status: bookings.status,
+                channexRevisionId: bookings.channexRevisionId,
+              })
+              .from(bookings)
+              .where(eq(bookings.channexBookingId, row.channexBookingId))
+              .limit(1)
+          )[0];
+
+          // Same revision id (both present) = idempotent feed re-delivery →
+          // don't re-notify. Missing revision ids fall through to normal
+          // classification rather than wrongly matching null === null.
+          const sameRevision =
+            !!existing &&
+            !!existing.channexRevisionId &&
+            existing.channexRevisionId === row.channexRevisionId;
+
+          let notifyKind:
+            | 'new_booking'
+            | 'cancellation'
+            | 'modification'
+            | null = null;
+          if (sameRevision) {
+            notifyKind = null;
+          } else if (row.status === 'cancelled') {
+            notifyKind = existing?.status === 'cancelled' ? null : 'cancellation';
+          } else if (!existing) {
+            notifyKind = 'new_booking';
+          } else {
+            notifyKind = 'modification';
           }
 
           // ── UPSERT on channex_booking_id ───────────────────────────
@@ -163,7 +207,19 @@ export const ingestBookings = inngest.createFunction(
               },
             });
 
-          return { ok: true, tenantId: mapping.tenantId } as const;
+          return {
+            ok: true,
+            tenantId: mapping.tenantId,
+            notifyKind,
+            booking: {
+              apartmentName: internalProperty.name,
+              guestName: row.guestName,
+              checkin: row.checkin,
+              checkout: row.checkout,
+              otaName: row.otaName,
+              otaConfirmationCode: row.otaConfirmationCode,
+            },
+          } as const;
         });
 
         if ('ok' in result) {
@@ -173,6 +229,25 @@ export const ingestBookings = inngest.createFunction(
           await step.run(`ack-${rev.id}`, async () => {
             await channex.bookings.feed.ack(rev.id);
           });
+          // Operator notification — its own durable step so a mail hiccup
+          // never re-runs the upsert/ack. notifyBookingEvent never throws.
+          const kind = result.notifyKind;
+          if (kind) {
+            await step.run(`notify-${rev.id}`, async () => {
+              const outcome = await notifyBookingEvent(db, emailConfig, {
+                tenantId: result.tenantId,
+                kind,
+                booking: result.booking,
+              });
+              if (!outcome.sent && outcome.reason === 'error') {
+                logger.warn(
+                  { revisionId: rev.id, error: outcome.message },
+                  'Booking notification failed to send',
+                );
+              }
+              return outcome;
+            });
+          }
         } else {
           totalSkipped++;
           logger.warn(

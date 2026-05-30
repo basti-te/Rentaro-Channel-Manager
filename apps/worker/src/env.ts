@@ -16,6 +16,13 @@ const Env = z.object({
   CHANNEX_WEBHOOK_SECRET: z.string().min(1),
   APP_URL: z.string().url().default('http://localhost:5173'),
 
+  // Resend transactional email (operator notifications) — optional; if unset,
+  // notifications degrade to "not configured" and are silently skipped.
+  RESEND_API_KEY: z.string().optional().transform((v) => v || undefined),
+  /** From header, e.g. `Rentaro <alerts@rentaro.cloud>`. Domain must be
+   *  verified in Resend. Without both this and RESEND_API_KEY, no mail sends. */
+  RESEND_FROM: z.string().optional().transform((v) => v || undefined),
+
   // Twilio SMS — optional; test-send / automation degrade gracefully if unset.
   TWILIO_ACCOUNT_SID: z.string().optional().transform((v) => v || undefined),
   TWILIO_AUTH_TOKEN: z.string().optional().transform((v) => v || undefined),

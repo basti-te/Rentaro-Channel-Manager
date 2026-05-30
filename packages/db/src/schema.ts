@@ -165,6 +165,20 @@ export const tenants = pgTable('tenants', {
   smsSenderId: text('sms_sender_id'),
 
   /**
+   * Operator e-mail notifications (transactional, via Resend). NULL/empty
+   * `notifyEmail` = notifications disabled entirely (nowhere to send). When
+   * set, each `notify*` flag gates one event class. Sent immediately per
+   * event from the worker; best-effort (a send failure never blocks the
+   * underlying job). Defaults ON so a configured address starts receiving
+   * everything until the operator opts out per class.
+   */
+  notifyEmail: text('notify_email'),
+  notifyNewBooking: boolean('notify_new_booking').notNull().default(true),
+  notifyCancellation: boolean('notify_cancellation').notNull().default(true),
+  notifyModification: boolean('notify_modification').notNull().default(true),
+  notifySyncError: boolean('notify_sync_error').notNull().default(true),
+
+  /**
    * SaaS-billing bypass. `true` = exempt from the plan-gate / lockout
    * (used for the project owner's own workspace and any comped accounts).
    * `false` (default) = goes through the trial → Stripe Checkout flow.
