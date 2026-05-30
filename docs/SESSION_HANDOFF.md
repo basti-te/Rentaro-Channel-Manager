@@ -1,10 +1,29 @@
 # Session Handoff — Pickup Notes
 
-_Last sync: **E-mail notifications** build session (2026-05-30). Operator
-e-mail alerts (new booking / cancellation / modification / sync error) built
-end-to-end via Resend; all four packages typecheck clean. Plus Auto-Review
-Phase B (2026-05-29, Open features #1). All uncommitted on top of git HEAD
-`a6f01bd`._
+_Last sync: **OTA go-live + post-launch polish** session (2026-05-31).
+Everything below is committed + pushed; git HEAD `d4b98e7` on `main`._
+
+**Shipped 2026-05-30/31 (all on `main`, deployed via Vercel/Railway):**
+- **OTA cutover LIVE** — 16 apts connected + Airbnb/Booking mapped (self-service
+  `/channels` iframe), Guesty disconnected, 2.8k bookings imported, PriceLabs
+  pushing variable prices, Preis-Quelle=PriceLabs, Full Sync done. Verified
+  against prod Channex. (Details in the GO-LIVE section below.)
+- **E-mail notifications** (Resend) — live; migration applied, domain verified,
+  Railway env set, worker redeployed. Set address + toggles in Settings.
+- **Self-service channel mapping** (`/channels`) + **groups CRUD/drag-reorder**
+  + **calendar today-marker/mobile fixes**.
+- **PriceLabs prices shown in calendar** (read back from Channex) + rate editor
+  locked in PriceLabs mode + settings hint.
+- **Live calendar** — inbound bookings appear without reload (`useBookingsRealtime`).
+- **Auth fix** — both Sebastian users (gmail magic-link, googlemail +Google) now
+  own CITY APARTMENTS ESSEN; Google login on the iPhone PWA works.
+- **Cleaning-calendar fix** (`d4b98e7`) — public `/cal/:slug` now uses an
+  overlap date filter, so in-progress stays show (was check-in-in-window only).
+
+**Open / next:**
+- Auto-Review Phase B still needs a real Airbnb review to validate, then a cron.
+- Public cleaning calendar window is 30 days forward; widen if the operator wants.
+- Empty duplicate workspace `30ce2ddc-…` left in place (0 members, harmless).
 
 **Operator action items for notifications (2026-05-30 build):**
 1. ✅ **Migration applied to PROD** (2026-05-30) — `0020_aspiring_black_tarantula.sql`;
