@@ -60,8 +60,26 @@ export function ChannelMappingFrame({
         src={sessionQ.data.url}
         title={`Kanäle ${propertyName ?? ''}`}
         className={cn('w-full block', heightClass)}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-        referrerPolicy="no-referrer"
+        // Production channel mapping runs real OTA OAuth (Airbnb / Booking.com
+        // login) in pop-ups. Each token below is REQUIRED for that to work —
+        // do NOT trim them or the connect flow breaks:
+        //   allow-scripts                          Channex app is a JS SPA
+        //   allow-same-origin                      its own session cookies / storage
+        //   allow-forms                            login + mapping forms submit
+        //   allow-popups                           open the OAuth pop-up at all
+        //   allow-popups-to-escape-sandbox         OAuth pop-up runs on the OTA
+        //                                          origin (airbnb.com etc.), NOT
+        //                                          inside our null-origin sandbox
+        //   allow-storage-access-by-user-activation  3rd-party cookie/storage the
+        //                                          OAuth handshake needs
+        // (Channex is a trusted partner, so allow-scripts + allow-same-origin
+        // together is acceptable here.)
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-storage-access-by-user-activation"
+        // clipboard-write: the mapping UI has copy-to-clipboard buttons (iCal
+        // URLs etc.). strict-origin referrer (not no-referrer) so OTA/Channex
+        // OAuth redirects that validate the embedding origin succeed.
+        allow="clipboard-write"
+        referrerPolicy="strict-origin-when-cross-origin"
       />
     </div>
   );
