@@ -27,7 +27,7 @@ import { NewBookingDialog, type EditingBooking } from './calendar/NewBookingDial
 import { RateEditorDialog, type RateSelection } from './calendar/RateEditorDialog';
 import { BookingDetailSheet } from './calendar/BookingDetailSheet';
 import { trpc } from '../lib/trpc';
-import { useSyncJobsRealtime } from '../lib/realtime';
+import { useSyncJobsRealtime, useBookingsRealtime } from '../lib/realtime';
 
 type CalendarMode = 'bookings' | 'rates';
 
@@ -71,6 +71,9 @@ export function CalendarPage() {
 
   // Subscribe to live sync_jobs changes for the current tenant.
   useSyncJobsRealtime(tenant?.tenantId);
+  // Subscribe to live booking changes so inbound OTA bookings (webhook →
+  // ingest → DB) appear in the calendar automatically, without a reload.
+  useBookingsRealtime(tenant?.tenantId);
 
   // propertyIds with an in-flight trigger mutation — disable their buttons.
   const [pendingSyncProps, setPendingSyncProps] = useState<Set<string>>(new Set());
