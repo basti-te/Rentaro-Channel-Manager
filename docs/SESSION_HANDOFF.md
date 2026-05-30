@@ -67,6 +67,15 @@ Env vars live in three places (do NOT rely on `.env.local` for prod state):
   with per-link field toggles + apartment scope.
 - **Auto-Review Phase A** — template editor in Settings, Inngest cron
   queues outbound reviews 3 days after checkout. Submission not yet wired.
+- **Self-service channel mapping (build, 2026-05-30)** — tenants connect +
+  map their own Airbnb / Booking.com / Vrbo listings via the embedded Channex
+  `/channels` iframe (one-time-token flow, same as Messages). `channels`
+  tRPC router (`iframeSession`, `redirect_to=/channels` + `lng=de`); shared
+  `ChannelMappingFrame` component; dedicated `/channels` page (in sidebar +
+  mobile menu + Apartments-header link) AND a per-apartment „Kanäle"
+  button+modal on the Apartments page. Whitelabel-only Channex feature.
+  Typecheck green, pushed (`3e9c2a1`). **Untested live** — needs the operator
+  to open it against a real connected apartment + actually connect an OTA.
 - **Auto-Review Phase B (build)** — Channex reviews client
   (`packages/channex/src/{schemas/review.ts,resources/reviews.ts}`),
   read-only probe `pnpm channex:reviews`, and the send function
