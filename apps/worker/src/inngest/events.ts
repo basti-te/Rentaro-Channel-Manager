@@ -105,4 +105,16 @@ export type Events = {
       reason?: string;
     };
   };
+
+  /**
+   * Submit due host→guest reviews (Airbnb-only) to Channex — Phase B.
+   * Deliberately event-triggered only (no cron yet): the send path can't run
+   * until the "Messages & Reviews" app is installed per property and a real
+   * Airbnb review exchange has been validated. Add a cron trigger after that.
+   */
+  'reviews/send.now': {
+    data: {
+      reason?: string;
+    };
+  };
 };

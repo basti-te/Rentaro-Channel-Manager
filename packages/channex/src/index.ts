@@ -20,6 +20,7 @@ import { RatePlansAPI } from './resources/rate-plans';
 import { AvailabilityAPI } from './resources/availability';
 import { RestrictionsAPI } from './resources/restrictions';
 import { BookingsAPI } from './resources/bookings';
+import { ReviewsAPI } from './resources/reviews';
 import { WebhooksAPI } from './resources/webhooks';
 import { AuthAPI } from './resources/auth';
 
@@ -31,6 +32,7 @@ export interface ChannexClient {
   availability: AvailabilityAPI;
   restrictions: RestrictionsAPI;
   bookings: BookingsAPI;
+  reviews: ReviewsAPI;
   webhooks: WebhooksAPI;
   auth: AuthAPI;
   /** Quick reachability check — calls GET /properties with limit=1. */
@@ -48,6 +50,7 @@ export function createChannexClient(config: ChannexConfig): ChannexClient {
     availability: new AvailabilityAPI(http),
     restrictions: new RestrictionsAPI(http),
     bookings: new BookingsAPI(http),
+    reviews: new ReviewsAPI(http),
     webhooks: new WebhooksAPI(http),
     auth: new AuthAPI(http),
     async ping() {
@@ -69,6 +72,16 @@ export {
 export type { AvailabilityUpdate } from './schemas/availability';
 export type { RestrictionUpdate } from './schemas/restriction';
 export type { Booking, BookingRevision, BookingCreate } from './schemas/booking';
+export type {
+  Review,
+  ReviewAttributes,
+  ReviewScore,
+  GuestReviewInput,
+  GuestReviewScores,
+  PropertyScore,
+  HostReviewScoreCategory,
+} from './schemas/review';
+export { reviewId, HOST_REVIEW_SCORE_CATEGORIES } from './schemas/review';
 export type { Webhook, WebhookCreate, WebhookDelivery, WebhookEvent } from './schemas/webhook';
 export { BOOKING_EVENTS } from './schemas/webhook';
 export type { OneTimeTokenInput } from './resources/auth';

@@ -24,6 +24,7 @@
     "channex:smoke": "pnpm --filter @cm/channex smoke",
     "channex:tasks": "pnpm --filter @cm/db channex:tasks",
     "channex:ids": "pnpm --filter @cm/channex ids",
+    "channex:reviews": "pnpm --filter @cm/channex reviews",
     "channex:register-webhook": "pnpm --filter @cm/channex register-webhook",
     "clean": "turbo run clean && rm -rf node_modules"
   },
