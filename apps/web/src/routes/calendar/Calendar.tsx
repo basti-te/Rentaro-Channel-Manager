@@ -75,6 +75,13 @@ interface Props {
   syncByProperty?: Map<string, PropertySyncInfo>;
   /** Per-day rate/restriction overrides, keyed propertyId → dayIdx → cell. */
   overridesByProperty?: Map<string, Map<number, OverrideCell>>;
+  /**
+   * Effective per-day rates read back from Channex (cents), keyed
+   * propertyId → dayIdx → cents. Set only in PriceLabs mode — when present for
+   * a free day, it's shown as the cell rate (these are the PriceLabs prices)
+   * instead of our property default. Read-only display.
+   */
+  externalRatesByProperty?: Map<string, Map<number, number>>;
   onSelectRange?: (result: SelectionResult) => void;
   onBookingClick?: (bookingId: string) => void;
   onSyncProperty?: (propertyId: string) => void;
@@ -106,6 +113,7 @@ export function Calendar({
   bookings,
   syncByProperty,
   overridesByProperty,
+  externalRatesByProperty,
   onSelectRange,
   onBookingClick,
   onSyncProperty,
@@ -388,8 +396,9 @@ export function Calendar({
                   todayIdx={todayIdx}
                   emphasizeToday={emphasizeToday}
                   bookings={bookingsByProperty.get(p.id) ?? []}
-                  occupied={occupiedByProperty.get(p.id) ?? new Set()}
+                  occupied={occupiedByProperty.get(p.id) ?? new Set<number>()}
                   overrides={overridesByProperty?.get(p.id)}
+                  externalRates={externalRatesByProperty?.get(p.id)}
                   start={start}
                   dayCount={dayCount}
                   selectionRange={rowPending}
@@ -501,6 +510,7 @@ function PropertyRow({
   bookings,
   occupied,
   overrides,
+  externalRates,
   start,
   dayCount,
   selectionRange,
@@ -519,6 +529,8 @@ function PropertyRow({
   bookings: Booking[];
   occupied: Set<number>;
   overrides: Map<number, OverrideCell> | undefined;
+  /** PriceLabs effective rate per dayIdx (cents), read back from Channex. */
+  externalRates: Map<number, number> | undefined;
   start: Date;
   dayCount: number;
   selectionRange: { from: number; to: number } | null;
@@ -553,12 +565,19 @@ function PropertyRow({
           const inRange =
             selectionRange != null && i >= selectionRange.from && i <= selectionRange.to;
 
-          // Effective per-day values: override wins over property default.
+          // Effective per-day rate for the label. Precedence:
+          //   PriceLabs rate (read back from Channex) > our override > default.
+          // externalRates is only populated in PriceLabs mode; in PMS mode it's
+          // undefined, so this reduces to the prior override-vs-default logic.
           const ov = overrides?.get(i);
-          const hasRateOverride = ov?.rateCents != null;
-          const rateLabel = hasRateOverride
-            ? formatRate(ov!.rateCents, property.currency)
-            : defaultRateLabel;
+          const extCents = externalRates?.get(i);
+          const hasExternalRate = extCents != null;
+          const hasRateOverride = !hasExternalRate && ov?.rateCents != null;
+          const rateLabel = hasExternalRate
+            ? formatRate(extCents, property.currency)
+            : hasRateOverride
+              ? formatRate(ov!.rateCents, property.currency)
+              : defaultRateLabel;
           const cellMinStay = ov?.minStay ?? defaultMinStay;
           const stopSell = ov?.stopSell === true;
           return (
@@ -593,12 +612,15 @@ function PropertyRow({
                   className={cn(
                     'num text-[10.5px] leading-none',
                     stopSell && 'mt-1',
-                    hasRateOverride
-                      ? 'text-ink-soft font-medium'
-                      : isToday
-                        ? 'text-brand/70'
-                        : 'text-whisper',
+                    hasExternalRate
+                      ? 'text-brand font-medium'
+                      : hasRateOverride
+                        ? 'text-ink-soft font-medium'
+                        : isToday
+                          ? 'text-brand/70'
+                          : 'text-whisper',
                   )}
+                  title={hasExternalRate ? 'Preis von PriceLabs (über Channex)' : undefined}
                 >
                   {rateLabel}
                 </span>

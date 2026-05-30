@@ -25,6 +25,12 @@ interface Props {
   propertyName: string | null;
   /** Effective currency for the property (property.currency ?? tenant default). */
   propertyCurrency: string | null;
+  /**
+   * Tenant uses PriceLabs (rateSource='pricelabs'). PriceLabs owns nightly
+   * prices in Channex, so the rate field here is inert — we disable it and
+   * show a hint. Min-stay / stop-sell stay editable (those remain PMS-driven).
+   */
+  pricelabsManaged?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -41,6 +47,7 @@ export function RateEditorDialog({
   selection,
   propertyName,
   propertyCurrency,
+  pricelabsManaged = false,
   onClose,
   onSaved,
 }: Props) {
@@ -117,7 +124,8 @@ export function RateEditorDialog({
       : `${format(range.firstNight, 'd. MMM', { locale: de })} – ${format(range.lastNight, 'd. MMM yyyy', { locale: de })} · ${range.nights} Tage`
     : 'Zeitraum wählen';
 
-  const rateNum = rate.trim() === '' ? null : Number(rate.replace(',', '.'));
+  // In PriceLabs mode the rate field is inert — never read a typed rate.
+  const rateNum = pricelabsManaged || rate.trim() === '' ? null : Number(rate.replace(',', '.'));
   const rateValid = rateNum == null || (Number.isFinite(rateNum) && rateNum >= 0);
   const minStayNum = minStay.trim() === '' ? null : Number(minStay);
   const minStayValid =
@@ -221,16 +229,27 @@ export function RateEditorDialog({
             </div>
           </div>
 
+          {pricelabsManaged && (
+            <div className="rounded-lg border border-brand/30 bg-brand-soft/40 px-3.5 py-2.5">
+              <p className="text-[12px] text-ink leading-relaxed">
+                <span className="font-medium">PriceLabs verwaltet die Preise.</span>{' '}
+                Preisänderungen hier wirken nicht — bitte passe Preise in
+                PriceLabs an. Min-Aufenthalt und Stop-Sell bleiben hier aktiv.
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="ro-rate">Preis / Nacht ({symbol})</Label>
               <Input
                 id="ro-rate"
                 inputMode="decimal"
-                placeholder="z. B. 89"
+                placeholder={pricelabsManaged ? 'von PriceLabs' : 'z. B. 89'}
                 value={rate}
                 onChange={(e) => setRate(e.target.value)}
-                autoFocus
+                disabled={pricelabsManaged}
+                autoFocus={!pricelabsManaged}
               />
             </div>
             <div className="space-y-1.5">

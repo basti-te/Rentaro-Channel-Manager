@@ -342,6 +342,18 @@ function RateSourceSection({
         Beim Umschalten werden Raten/Restriktionen für alle verbundenen
         Apartments über ~180 Tage neu an Channex gemeldet.
       </p>
+      {value === 'pricelabs' && (
+        <div className="mt-3 rounded-lg border border-brand/30 bg-brand-soft/40 px-3.5 py-2.5">
+          <p className="text-[12px] text-ink leading-relaxed">
+            <span className="font-medium">PriceLabs verwaltet die Preise.</span>{' '}
+            Die Nachtpreise werden von PriceLabs direkt in Channex geschrieben
+            und im Kalender angezeigt. Preisänderungen in der Rentaro-Oberfläche
+            laufen ins Leere — passe Preise in PriceLabs an. Restriktionen
+            (Min-Aufenthalt, Stop-Sell) sowie die Verfügbarkeit kommen weiterhin
+            aus Rentaro.
+          </p>
+        </div>
+      )}
     </SectionCard>
   );
 }

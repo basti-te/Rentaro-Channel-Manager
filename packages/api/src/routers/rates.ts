@@ -1,9 +1,26 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, eq, gte, lt } from 'drizzle-orm';
-import { properties, rateOverrides, type Database } from '@cm/db';
+import {
+  channexProperties,
+  properties,
+  rateOverrides,
+  tenants,
+  type Database,
+} from '@cm/db';
+import { createChannexClient, ChannexError, type DayRate } from '@cm/channex';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
 import { enqueueAri } from '../services/ari';
+
+/**
+ * Tiny in-process cache for Channex rate read-backs. Channex limits rate
+ * reads to 10/min PER PROPERTY, and the calendar would otherwise re-read on
+ * every navigation. Keyed by property+range; 5-min TTL is plenty fresh for a
+ * display label (PriceLabs recomputes ~daily). Best-effort — a server restart
+ * just means a cold read.
+ */
+const RATE_CACHE = new Map<string, { at: number; rates: DayRate[] }>();
+const RATE_CACHE_TTL_MS = 5 * 60_000;
 
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
 
@@ -164,6 +181,94 @@ export const ratesRouter = router({
       });
 
       return { days: days.length };
+    }),
+
+  /**
+   * Read the EFFECTIVE nightly rates Channex currently holds, per connected
+   * property, over [from, to). Only meaningful when the tenant uses PriceLabs
+   * (rateSource='pricelabs') — then these ARE the PriceLabs prices, since
+   * Channex is the hub PriceLabs writes into. Returns [] for PMS-mode tenants
+   * (the calendar already shows our own rate there) so we never burn Channex
+   * read-quota needlessly.
+   *
+   * Read-only. Cached + paced for the 10-reads/min/property Channex limit.
+   * Properties that error (or aren't mapped) are simply omitted.
+   */
+  channexEffectiveRates: tenantProcedure
+    .input(z.object({ from: dateStr, to: dateStr }))
+    .query(async ({ ctx, input }) => {
+      // Gate strictly on PriceLabs mode.
+      const tenant = (
+        await ctx.db
+          .select({ rateSource: tenants.rateSource })
+          .from(tenants)
+          .where(eq(tenants.id, ctx.tenantId!))
+          .limit(1)
+      )[0];
+      if (!tenant || tenant.rateSource !== 'pricelabs') {
+        return [] as Array<{ propertyId: string; date: string; rateCents: number }>;
+      }
+
+      // Connected properties for this tenant + their Channex ids.
+      const mapped = await ctx.db
+        .select({
+          propertyId: properties.id,
+          channexPropertyId: channexProperties.channexPropertyId,
+          ratePlanId: channexProperties.channexRatePlanId,
+        })
+        .from(properties)
+        .innerJoin(
+          channexProperties,
+          eq(channexProperties.id, properties.channexPropertyRef),
+        )
+        .where(eq(properties.tenantId, ctx.tenantId!));
+      if (mapped.length === 0) return [];
+
+      const channex = createChannexClient({
+        baseUrl: ctx.env.CHANNEX_API_URL,
+        apiKey: ctx.env.CHANNEX_API_KEY,
+      });
+      // GET /restrictions date filter is inclusive; our `to` is exclusive.
+      const dateTo = (() => {
+        const t = new Date(`${input.to}T00:00:00Z`);
+        t.setUTCDate(t.getUTCDate() - 1);
+        return t.toISOString().slice(0, 10);
+      })();
+
+      const now = Date.now();
+      const out: Array<{ propertyId: string; date: string; rateCents: number }> = [];
+
+      await Promise.all(
+        mapped.map(async (m) => {
+          const cacheKey = `${m.channexPropertyId}:${input.from}:${dateTo}`;
+          const hit = RATE_CACHE.get(cacheKey);
+          let rates: DayRate[];
+          if (hit && now - hit.at < RATE_CACHE_TTL_MS) {
+            rates = hit.rates;
+          } else {
+            try {
+              rates = await channex.restrictions.readRates({
+                propertyId: m.channexPropertyId,
+                ratePlanId: m.ratePlanId,
+                dateFrom: input.from,
+                dateTo,
+              });
+              RATE_CACHE.set(cacheKey, { at: now, rates });
+            } catch (err) {
+              // Rate-limited or transient — skip this property this round.
+              if (!(err instanceof ChannexError)) throw err;
+              return;
+            }
+          }
+          for (const r of rates) {
+            if (r.rateCents != null) {
+              out.push({ propertyId: m.propertyId, date: r.date, rateCents: r.rateCents });
+            }
+          }
+        }),
+      );
+
+      return out;
     }),
 
   /** Delete overrides in [from, to); affected days fall back to property defaults. */

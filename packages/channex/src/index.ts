@@ -71,6 +71,7 @@ export {
 } from './errors';
 export type { AvailabilityUpdate } from './schemas/availability';
 export type { RestrictionUpdate } from './schemas/restriction';
+export type { DayRate } from './resources/restrictions';
 export type { Booking, BookingRevision, BookingCreate } from './schemas/booking';
 export type {
   Review,

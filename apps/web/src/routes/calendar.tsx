@@ -59,6 +59,15 @@ export function CalendarPage() {
   });
 
   const tenant = meQ.data?.memberships[0];
+  const pricelabsMode = tenant?.rateSource === 'pricelabs';
+
+  // In PriceLabs mode the real per-day prices live in Channex (PriceLabs writes
+  // them). Read them back (server-cached/paced) so the calendar shows the true
+  // prices instead of our static default. Disabled in PMS mode.
+  const externalRatesQ = trpc.rates.channexEffectiveRates.useQuery(
+    { from: formatISODate(start), to: formatISODate(end) },
+    { enabled: pricelabsMode, refetchOnWindowFocus: false, staleTime: 5 * 60_000 },
+  );
 
   // Subscribe to live sync_jobs changes for the current tenant.
   useSyncJobsRealtime(tenant?.tenantId);
@@ -120,6 +129,22 @@ export function CalendarPage() {
     }
     return map;
   }, [overridesQ.data, start]);
+
+  // propertyId → dayIdx → effective Channex (PriceLabs) rate in cents.
+  const externalRatesByProperty = useMemo(() => {
+    const map = new Map<string, Map<number, number>>();
+    for (const r of externalRatesQ.data ?? []) {
+      const idx = differenceInCalendarDays(new Date(`${r.date}T00:00:00`), start);
+      if (idx < 0 || idx >= VIEWPORT_DAYS) continue;
+      let inner = map.get(r.propertyId);
+      if (!inner) {
+        inner = new Map();
+        map.set(r.propertyId, inner);
+      }
+      inner.set(idx, r.rateCents);
+    }
+    return map;
+  }, [externalRatesQ.data, start]);
 
   const isLoading = groupsQ.isLoading || propsQ.isLoading || bookingsQ.isLoading;
 
@@ -261,6 +286,7 @@ export function CalendarPage() {
           bookings={bookings}
           syncByProperty={syncByProperty}
           overridesByProperty={overridesByProperty}
+          externalRatesByProperty={externalRatesByProperty}
           pendingSyncProperties={pendingSyncProps}
           onSelectRange={(r) =>
             mode === 'rates'
@@ -314,6 +340,7 @@ export function CalendarPage() {
               null
             : null
         }
+        pricelabsManaged={pricelabsMode}
         onClose={() => setRateSelection(null)}
         onSaved={() => {
           utils.rates.listByRangeAll.invalidate();
