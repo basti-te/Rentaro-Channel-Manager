@@ -180,6 +180,7 @@ export function PublicCleaningCalendarPage() {
           properties={propsForCalendar}
           bookings={bookingsForCalendar}
           onBookingClick={(id) => setDetailId(id)}
+          emphasizeToday
         />
       </main>
 
