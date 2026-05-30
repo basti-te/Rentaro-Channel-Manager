@@ -1,6 +1,25 @@
 # Session Handoff — Pickup Notes
 
-_Last sync: end of the "Auto-Review Phase A" session (commit `03d1309`)._
+_Last sync: **E-mail notifications** build session (2026-05-30). Operator
+e-mail alerts (new booking / cancellation / modification / sync error) built
+end-to-end via Resend; all four packages typecheck clean. Plus Auto-Review
+Phase B (2026-05-29, Open features #1). All uncommitted on top of git HEAD
+`a6f01bd`._
+
+**Operator action items for notifications (2026-05-30 build):**
+1. ✅ **Migration applied to PROD** (2026-05-30) — `0020_aspiring_black_tarantula.sql`;
+   verified all 5 `notify_*` columns present on `tenants`, defaults `true`.
+2. ✅ **Railway worker env set** — `RESEND_API_KEY` + `RESEND_FROM` (operator
+   confirmed 2026-05-30). Redeploy/restart the worker if it was running before
+   the vars were added, so it picks them up.
+3. ✅ **Resend sender domain verified** — `rentaro.cloud` shows Verified
+   (DKIM ✓, SPF MX+TXT ✓, DMARC present), region Ireland (eu-west-1),
+   confirmed 2026-05-30. `RESEND_FROM` must use an address on this domain
+   (e.g. `Rentaro <alerts@rentaro.cloud>`).
+4. Then Settings → **Benachrichtigungen** → enter the address + flip the
+   per-event toggles. **Sync-error alerts can fire now** (after a worker
+   restart so it has the env). **Booking alerts only fire once OTA channels
+   are mapped** (they ride the existing booking-ingest feed).
 
 This document is a fast pointer for whoever (which model, which session) picks
 up the work. Read this first, then dive into the linked files.
@@ -48,6 +67,26 @@ Env vars live in three places (do NOT rely on `.env.local` for prod state):
   with per-link field toggles + apartment scope.
 - **Auto-Review Phase A** — template editor in Settings, Inngest cron
   queues outbound reviews 3 days after checkout. Submission not yet wired.
+- **Auto-Review Phase B (build)** — Channex reviews client
+  (`packages/channex/src/{schemas/review.ts,resources/reviews.ts}`),
+  read-only probe `pnpm channex:reviews`, and the send function
+  `apps/worker/src/inngest/functions/outbound-reviews-send.ts` (wired via
+  the `reviews/send.now` event, **no cron yet**). All typechecks clean.
+  Cannot run end-to-end until OTA mapping + a real Airbnb review exist.
+- **E-mail notifications (build, 2026-05-30)** — operator alerts via Resend.
+  New `packages/api/src/services/email.ts` (Resend REST, graceful
+  not-configured like twilio.ts) + `notifications.ts` (gate on per-tenant
+  address + toggle; best-effort, never throws). Wired into `ingest-bookings`
+  (classifies new/cancellation/modification by comparing the pre-upsert row;
+  same-revision re-delivery doesn't re-notify) and `ari-flush` /
+  `ari-flush-cron` via Inngest `onFailure` → alerts tenants holding unflushed
+  rows. Schema: `tenants.notify_email` + `notify_new_booking` /
+  `notify_cancellation` / `notify_modification` / `notify_sync_error`
+  (migration 0020, **unapplied**). Settings → **Benachrichtigungen**
+  (address + 4 toggles, `settings.setNotifications`). Operator action items at
+  the top of this doc. Follow-ups: review-send failure isn't alerted (that
+  function catches per-row, so `onFailure` won't fire — needs an explicit
+  hook); mails are German-only.
 
 ### 🟡 Holding pattern — needs operator action
 
@@ -68,6 +107,15 @@ The operator wants a **fresh start** before going live with OTAs:
    property (OAuth flows + listing selection).
 7. Disconnect the OTAs from Guesty (otherwise both push).
 8. One Full Sync per apartment from the Apartments page.
+9. **Connect PriceLabs** (ADR 0006 — direct PriceLabs ↔ Channex, no
+   connector to build). In the PriceLabs UI, link the **production**
+   Channex account (paste the prod Channex API key). Let PriceLabs pull
+   listings + push its first price set. THEN flip rate ownership in-app:
+   Settings → **Preis-Quelle** → PriceLabs (admin `settings.setRateSource`).
+   That makes the ARI flusher stop pushing the `rate` field (it keeps
+   pushing restrictions) and re-asserts a 180-day window. **Flip AFTER
+   PriceLabs is live** — flipping first leaves listings with no rate
+   (we'd suppress it before PriceLabs has pushed one).
 
 **Reset is the operator's call to actually execute** — all tools are
 ready. See `pnpm db:disconnect-channex --apply` if a full programmatic
@@ -76,20 +124,71 @@ reset is needed instead of UI clicks.
 ### ⏳ Open features (priority order)
 
 1. **Auto-Review Phase B — Channex Reviews API integration**
-   - Phase A queues outbound reviews into the `outbound_reviews` table.
-   - Need to: research Channex' Reviews API (`https://docs.channex.io/api-v.1-documentation/reviews-collection`),
-     find out if host-to-guest reviews are supported, wrap in
-     `packages/channex/src/resources/reviews.ts`, write a second
-     Inngest function `outbound-reviews-send` that picks queued rows
-     and POSTs to Channex. Handle 14-day Airbnb deadline gracefully.
-   - If Channex doesn't support host-to-guest reviews: fall back to a
-     semi-automatic Inbox UI where the operator click-copies the
-     rendered text and pastes into Airbnb manually.
+   _(BUILT 2026-05-29, uncommitted. Docs: "Send Guest Review" at
+   `https://docs.channex.io/api-v.1-documentation/reviews-collection`.)_
 
-2. **Listing Links page** — per-apartment list of OTA listing URLs
-   (Airbnb, Booking.com, Vrbo), copy-friendly. Operator currently has
-   to dig in Channex to find them. Likely a new tab on the Apartments
-   page or a sub-route. Data lives in Channex (`channels` resource).
+   **Host→guest reviews ARE supported — Airbnb-only**, via
+   `POST /reviews/:review_id/guest_review`. The code is written; it just
+   can't run end-to-end until the OTA mapping + a real Airbnb review exist.
+
+   **Operator decisions (locked 2026-05-29):**
+   - **Always 5★.** The per-booking auto-review toggle (default ON) is the
+     only opt-out — switch it OFF in BookingDetailSheet and Phase A stops
+     queuing. There is **no separate hold/veto window**.
+   - **Airbnb-only.** Booking.com / Expedia / Vrbo → row marked `skipped`
+     (`unsupported_ota:<source>`). No copy-paste fallback in scope.
+
+   **What's built:**
+   - `packages/channex/src/schemas/review.ts` + `resources/reviews.ts`:
+     `list()`, `get(id)`, `reply(id,text)`, `sendGuestReview(id,input)`,
+     `scores.get/detailed`. `reviewId(r)` helper. Wired into the client.
+   - `apps/worker/src/inngest/functions/outbound-reviews-send.ts` — the send
+     path. Triggered by the `reviews/send.now` event (**no cron yet** — fire
+     it manually once unblocked, then add a cron). Logic: bulk-expire queued
+     rows whose checkout is >14d old (no API call — this neutralises the
+     ~2,803 historical Guesty rows so they never hit Channex); list Airbnb
+     reviews once, index review_ids by Channex booking id + ota_reservation
+     code; per due row resolve the id → `sent`, no id → left `queued`
+     (`waiting`), non-Airbnb → `skipped`. If `GET /reviews` 403s (app not
+     installed) it leaves everything queued and reports `blocked`.
+   - **No migration needed.** "Always 5★" means all three categories derive
+     from the existing `outbound_reviews.starRating` and `is_recommended =
+     rating>=4`; `status` is free-text so `expired`/`skipped` add no columns.
+   - Read-only probe: `pnpm channex:reviews` (lists `GET /reviews` for the
+     account `.env.local` targets; prints Airbnb-with-review_id count).
+
+   **Blockers / next steps (in order):**
+   1. ✅ `Messages & Reviews` app installed per Property (done 2026-05-29).
+   2. ⏭️ **OTA channel mapping** in app.channex.io — operator's next step
+      (also Holding-pattern #6). Until Airbnb is mapped, reviews carry no
+      resolvable id.
+   3. ⏳ **Validate assumption #2** — that a `review_id` actually surfaces in
+      `GET /reviews` after an Airbnb checkout. Run `pnpm channex:reviews`;
+      look for "airbnb (with review_id: N ← Phase B targets)" > 0. This is
+      the one thing still unverified against the live API.
+   4. Fire `reviews/send.now` manually (Inngest dashboard) on a real review;
+      confirm it posts. Only then add a `{ cron }` trigger to the function.
+   - Still TODO (UI, separate): BookingDetailSheet review-status + Skip
+     (Open features #3). The Settings score/recommend editor is moot while
+     "always 5★" holds.
+
+2. **Listing Links — Settings section** with per-apartment OTA listing
+   URLs (Airbnb, Booking.com, Vrbo), copy-friendly. Operator currently has
+   to dig in Channex to find them.
+
+   **DEFERRED by operator (2026-05-30) until Channex is properly connected
+   (channels mapped — Holding-pattern #6).** Reason: nothing to show until
+   channels exist, AND the Channex `/channels` API contract is unverified —
+   docs.channex.io returns 404 for the channels-collection page, so we don't
+   yet know if it exposes a clickable listing URL or only an OTA listing/
+   hotel id (Booking.com likely id-only). **First step on resume:** with at
+   least one channel mapped, inspect a real `GET /channels` response (mirror
+   the reviews approach — a throwaway probe script like
+   `packages/channex/scripts/list-reviews.ts`) to see the actual fields,
+   THEN decide auto-from-Channex vs. a manual per-apartment URL field (small
+   schema migration) vs. hybrid. Likely a new section on `/settings` or a
+   tab on the Apartments page. Channex Channel API is Whitelabel-only (we
+   qualify); shortcodes live in Channex "Channel Codes".
 
 3. **BookingDetailSheet Review-Status integration** — currently the
    sheet has the Auto-Review toggle but doesn't show the queue state.
@@ -110,7 +209,8 @@ Browser  →  Vercel  →  tRPC API on Railway (Hono + Drizzle)  →  Supabase P
                               │                          ├─ channex-full-sync   (500-day reset)
                               │                          ├─ messages-dispatch   (auto SMS / OTA msg)
                               │                          ├─ cleaning-dispatch   (SMS to cleaners)
-                              │                          ├─ outbound-reviews-dispatch (Phase A)
+                              │                          ├─ outbound-reviews-dispatch (Phase A — queues)
+                              │                          ├─ outbound-reviews-send     (Phase B — Airbnb, event-only)
                               │                          └─ billing-reconcile / stripe-event
                               │
                               ├──→  Channex API  →  Booking.com / Airbnb / Vrbo
@@ -151,9 +251,12 @@ in `.env.local` if you switch environments.
 
 ## Pending decisions to relay to the operator
 
-1. **Phase B path** — full automation through Channex Reviews API, OR
-   semi-automatic copy-paste-to-Airbnb workflow. Depends on what the
-   Channex API actually exposes for host-to-guest reviews.
+1. **Phase B rating policy — RESOLVED (2026-05-29).** Operator chose
+   **auto-rate-all 5★**, per-booking toggle (default ON) as the only
+   opt-out, **no hold/veto window**; Airbnb-only, Booking.com/Vrbo out of
+   scope. The `Messages & Reviews` 403 blocker is cleared (app installed).
+   Built per these decisions — see Open features #1. Nothing left to relay
+   here; the open item is now OTA mapping (operator) + validation.
 2. **Auto-Review language detection** — currently always 'de'. If the
    operator wants the cron to pick 'en' for English-speaking guests,
    we need a language signal on `bookings` (Channex sometimes provides
