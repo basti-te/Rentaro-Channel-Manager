@@ -1225,6 +1225,70 @@ function TaskId({ label, id }: { label: string; id: string }) {
   );
 }
 
+/**
+ * Per-apartment channel-mapping modal. Embeds the same Channex /channels
+ * self-service screen as the dedicated Kanäle page, scoped to one apartment,
+ * so the tenant can connect Airbnb / Booking.com / … right from the row.
+ */
+function ChannelsDialog({
+  propertyId,
+  propertyName,
+  onClose,
+}: {
+  propertyId: string;
+  propertyName: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:px-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
+      <div
+        className="relative w-full sm:max-w-[920px] bg-surface rounded-t-2xl sm:rounded-xl shadow-lg border border-line animate-fade-up max-h-[92dvh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Plug className="h-4 w-4 text-brand" strokeWidth={1.75} />
+              <h2 className="display text-[20px] font-medium text-ink">Kanäle</h2>
+            </div>
+            <p className="mt-1 text-[12.5px] text-muted">
+              Verbinde Airbnb / Booking.com / Vrbo mit{' '}
+              <span className="font-medium text-ink">{propertyName}</span>.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-muted hover:text-ink p-1"
+            aria-label="Schließen"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="px-6 pb-6">
+          <ChannelMappingFrame
+            propertyId={propertyId}
+            propertyName={propertyName}
+            heightClass="h-[68dvh] min-h-[420px]"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SimulateBookingDialog({
   propertyId,
   propertyName,
