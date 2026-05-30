@@ -12,6 +12,7 @@ import {
   Pencil,
   Trash2,
   AlertTriangle,
+  FolderPlus,
 } from 'lucide-react';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@cm/api';
@@ -34,6 +35,13 @@ import { trpc } from '../lib/trpc';
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type PropertyRow = RouterOutput['properties']['list'][number];
 type FullSyncRow = RouterOutput['sync']['fullSyncStatus'][number];
+type GroupRow = RouterOutput['propertyGroups']['list'][number];
+
+/** Preset swatches for group colors (matches the calendar left-rail palette). */
+const GROUP_COLORS = [
+  '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6',
+  '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#807A6E',
+];
 
 export function ApartmentsPage() {
   const utils = trpc.useUtils();
@@ -69,6 +77,7 @@ export function ApartmentsPage() {
   });
 
   const [showNew, setShowNew] = useState(false);
+  const [showNewGroup, setShowNewGroup] = useState(false);
 
   return (
     <>
@@ -84,6 +93,13 @@ export function ApartmentsPage() {
               onClick={() => fullSyncAll.mutate()}
             >
               Alle synchronisieren
+            </Button>
+            <Button
+              variant="secondary"
+              iconLeft={<FolderPlus className="h-4 w-4" />}
+              onClick={() => setShowNewGroup(true)}
+            >
+              Neue Gruppe
             </Button>
             <Button
               variant="brand"
@@ -121,9 +137,22 @@ export function ApartmentsPage() {
           }}
         />
       )}
+
+      {showNewGroup && (
+        <GroupDialog
+          onClose={() => setShowNewGroup(false)}
+          onSaved={() => {
+            utils.propertyGroups.list.invalidate();
+            setShowNewGroup(false);
+          }}
+        />
+      )}
     </>
   );
 }
+
+/** Stable section key — real group id or a sentinel for the ungrouped bucket. */
+const UNGROUPED = '__ungrouped__';
 
 function Grouped({
   groups,
@@ -131,11 +160,44 @@ function Grouped({
   crsCapable,
   fullSyncByProp,
 }: {
-  groups: Array<{ id: string; name: string; color: string }>;
+  groups: GroupRow[];
   properties: PropertyRow[];
   crsCapable: Set<string>;
   fullSyncByProp: Map<string, FullSyncRow>;
 }) {
+  const utils = trpc.useUtils();
+
+  // ── Drag-to-reorder (native HTML5 DnD, within a group only) ──────────────
+  // `armedId` gates which row may start a drag — set on grip mousedown so a
+  // plain text-select on the row doesn't initiate a drag.
+  const [armedId, setArmedId] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+
+  const reorder = trpc.properties.reorder.useMutation({
+    onMutate: async ({ orderedIds }) => {
+      await utils.properties.list.cancel();
+      const prev = utils.properties.list.getData();
+      if (prev) {
+        // Group items are contiguous in the list (ordered group→sortOrder), so
+        // fill each of this group's slots with the new order, leave others put.
+        const idSet = new Set(orderedIds);
+        const byId = new Map(prev.map((p) => [p.id, p]));
+        const inOrder = orderedIds.map((id) => byId.get(id)!).filter(Boolean);
+        let k = 0;
+        const next = prev.map((p) => (idSet.has(p.id) ? inOrder[k++]! : p));
+        utils.properties.list.setData(undefined, next);
+      }
+      return { prev };
+    },
+    onError: (e, _vars, context) => {
+      if (context?.prev) utils.properties.list.setData(undefined, context.prev);
+      toast.error(e.message);
+    },
+    onSettled: () => utils.properties.list.invalidate(),
+  });
+
   // Bucket properties by group
   const grouped = new Map<string | null, PropertyRow[]>();
   for (const p of properties) {
@@ -144,10 +206,17 @@ function Grouped({
     grouped.get(key)!.push(p);
   }
 
-  const sections: Array<{ id: string | null; name: string; color: string; items: PropertyRow[] }> = [];
+  const sections: Array<{
+    key: string;
+    group: GroupRow | null;
+    name: string;
+    color: string;
+    items: PropertyRow[];
+  }> = [];
   for (const g of groups) {
     sections.push({
-      id: g.id,
+      key: g.id,
+      group: g,
       name: g.name,
       color: g.color,
       items: grouped.get(g.id) ?? [],
@@ -155,28 +224,46 @@ function Grouped({
   }
   const ungrouped = grouped.get(null);
   if (ungrouped && ungrouped.length > 0) {
-    sections.push({ id: null, name: 'Ungrouped', color: '#807A6E', items: ungrouped });
+    sections.push({ key: UNGROUPED, group: null, name: 'Ohne Gruppe', color: '#807A6E', items: ungrouped });
+  }
+
+  function resetDrag() {
+    setArmedId(null);
+    setDragId(null);
+    setDragKey(null);
+    setOverId(null);
+  }
+
+  function handleDrop(sectionKey: string, items: PropertyRow[], targetId: string) {
+    if (!dragId || dragKey !== sectionKey || dragId === targetId) {
+      resetDrag();
+      return;
+    }
+    const ids = items.map((p) => p.id);
+    const from = ids.indexOf(dragId);
+    const to = ids.indexOf(targetId);
+    if (from === -1 || to === -1) {
+      resetDrag();
+      return;
+    }
+    ids.splice(to, 0, ids.splice(from, 1)[0]!);
+    reorder.mutate({ orderedIds: ids });
+    resetDrag();
   }
 
   return (
     <div className="space-y-7">
       {sections.map((s) => (
-        <section key={s.id ?? 'ungrouped'} className="animate-fade-up">
-          <div className="flex items-center gap-3 mb-3 px-1">
-            <span
-              aria-hidden
-              className="h-2.5 w-2.5 rounded-[2px]"
-              style={{ background: s.color }}
-            />
-            <h2 className="display text-[18px] font-medium text-ink">
-              {s.name}
-            </h2>
-            <span className="num text-[12px] text-muted">{s.items.length}</span>
-            <div className="flex-1 border-b border-line ml-2" />
-          </div>
+        <section key={s.key} className="animate-fade-up">
+          <GroupHeader
+            group={s.group}
+            name={s.name}
+            color={s.color}
+            count={s.items.length}
+          />
           {s.items.length === 0 ? (
             <div className="text-[13px] text-whisper italic px-1">
-              No apartments in this group yet.
+              Noch keine Apartments in dieser Gruppe.
             </div>
           ) : (
             <Card className="overflow-hidden">
@@ -185,8 +272,28 @@ function Grouped({
                   <PropertyRowItem
                     key={p.id}
                     property={p}
+                    groups={groups}
                     crsCapable={crsCapable.has(p.id)}
                     fullSync={fullSyncByProp.get(p.id)}
+                    drag={{
+                      draggable: armedId === p.id,
+                      canDrop: dragId !== null && dragKey === s.key,
+                      isOver: overId === p.id && dragId !== p.id && dragKey === s.key,
+                      isDragging: dragId === p.id,
+                      onArm: () => setArmedId(p.id),
+                      onDisarm: () => {
+                        if (!dragId) setArmedId(null);
+                      },
+                      onDragStart: () => {
+                        setDragId(p.id);
+                        setDragKey(s.key);
+                      },
+                      onDragEnterRow: () => {
+                        if (dragId && dragKey === s.key) setOverId(p.id);
+                      },
+                      onDrop: () => handleDrop(s.key, s.items, p.id),
+                      onDragEnd: resetDrag,
+                    }}
                   />
                 ))}
               </ul>
@@ -198,14 +305,178 @@ function Grouped({
   );
 }
 
+interface RowDragProps {
+  draggable: boolean;
+  /** A drag is active within this row's group → this row is a valid drop target. */
+  canDrop: boolean;
+  isOver: boolean;
+  isDragging: boolean;
+  onArm: () => void;
+  onDisarm: () => void;
+  onDragStart: () => void;
+  onDragEnterRow: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
+}
+
+/**
+ * Group section header. Real groups get a kebab (rename/color, delete). The
+ * synthetic "Ohne Gruppe" bucket (group === null) is read-only.
+ */
+function GroupHeader({
+  group,
+  name,
+  color,
+  count,
+}: {
+  group: GroupRow | null;
+  name: string;
+  color: string;
+  count: number;
+}) {
+  const utils = trpc.useUtils();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onDoc(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
+  const del = trpc.propertyGroups.delete.useMutation({
+    onSuccess: () => {
+      toast.success(`Gruppe „${name}" gelöscht`);
+      void utils.propertyGroups.list.invalidate();
+      setShowDelete(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const empty = count === 0;
+
+  return (
+    <div className="flex items-center gap-3 mb-3 px-1">
+      <span aria-hidden className="h-2.5 w-2.5 rounded-[2px]" style={{ background: color }} />
+      <h2 className="display text-[18px] font-medium text-ink">{name}</h2>
+      <span className="num text-[12px] text-muted">{count}</span>
+      <div className="flex-1 border-b border-line ml-2" />
+
+      {group && (
+        <div className="relative" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            className={cn(
+              'inline-flex items-center justify-center h-7 w-7 rounded-md',
+              'text-muted hover:text-ink hover:bg-sunken transition-colors',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+            )}
+            aria-label={`Aktionen für Gruppe ${name}`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+          >
+            <MoreVertical className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              className={cn(
+                'absolute right-0 top-full mt-1 z-20 min-w-[180px]',
+                'rounded-lg border border-line bg-surface shadow-lg py-1 animate-fade-up',
+              )}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setShowEdit(true);
+                }}
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-ink hover:bg-sunken text-left"
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Bearbeiten
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!empty}
+                onClick={() => {
+                  if (!empty) return;
+                  setMenuOpen(false);
+                  setShowDelete(true);
+                }}
+                title={empty ? undefined : 'Gruppe muss leer sein, um sie zu löschen'}
+                className={cn(
+                  'flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-left',
+                  empty
+                    ? 'text-danger hover:bg-danger-soft'
+                    : 'text-whisper cursor-not-allowed',
+                )}
+              >
+                <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Löschen
+              </button>
+              {!empty && (
+                <p className="px-3 pt-1 pb-1 text-[11px] text-whisper leading-snug">
+                  Erst alle Apartments entfernen oder verschieben.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showEdit && group && (
+        <GroupDialog
+          group={group}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => {
+            utils.propertyGroups.list.invalidate();
+            setShowEdit(false);
+          }}
+        />
+      )}
+
+      {showDelete && group && (
+        <ConfirmDeleteGroupDialog
+          name={name}
+          pending={del.isPending}
+          onClose={() => setShowDelete(false)}
+          onConfirm={() => del.mutate({ id: group.id })}
+        />
+      )}
+    </div>
+  );
+}
+
 function PropertyRowItem({
   property,
+  groups,
   crsCapable,
   fullSync,
+  drag,
 }: {
   property: PropertyRow;
+  groups: GroupRow[];
   crsCapable: boolean;
   fullSync: FullSyncRow | undefined;
+  drag: RowDragProps;
 }) {
   const utils = trpc.useUtils();
   const onboard = trpc.properties.onboardToChannex.useMutation({
@@ -222,11 +493,11 @@ function PropertyRowItem({
     },
     onError: (e) => toast.error(e.message),
   });
-  const renameMut = trpc.properties.update.useMutation({
+  const editMut = trpc.properties.update.useMutation({
     onSuccess: () => {
-      toast.success(`${property.name} umbenannt`);
+      toast.success(`${property.name} aktualisiert`);
       void utils.properties.list.invalidate();
-      setShowRename(false);
+      setShowEdit(false);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -241,7 +512,7 @@ function PropertyRowItem({
 
   const [showSimulate, setShowSimulate] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showRename, setShowRename] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -275,12 +546,42 @@ function PropertyRowItem({
   } | null;
 
   return (
-    <li className="px-4 py-3 hover:bg-sunken/40 transition-colors">
+    <li
+      draggable={drag.draggable}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        // Firefox needs data set for drag to start.
+        e.dataTransfer.setData('text/plain', property.id);
+        drag.onDragStart();
+      }}
+      onDragEnter={(e) => {
+        if (drag.canDrop) e.preventDefault();
+        drag.onDragEnterRow();
+      }}
+      onDragOver={(e) => {
+        // Must preventDefault on every dragover for the drop to be accepted.
+        if (drag.canDrop) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        drag.onDrop();
+      }}
+      onDragEnd={drag.onDragEnd}
+      className={cn(
+        'px-4 py-3 hover:bg-sunken/40 transition-colors',
+        drag.isDragging && 'opacity-40',
+        drag.isOver && 'border-t-2 border-brand',
+      )}
+    >
       <div className="flex items-center gap-3">
         <button
           type="button"
-          className="text-whisper hover:text-muted cursor-grab active:cursor-grabbing"
-          aria-label="Drag to reorder"
+          onMouseDown={drag.onArm}
+          onMouseUp={drag.onDisarm}
+          onBlur={drag.onDisarm}
+          className="text-whisper hover:text-muted cursor-grab active:cursor-grabbing touch-none"
+          aria-label="Zum Sortieren ziehen"
+          title="Zum Sortieren ziehen"
           tabIndex={-1}
         >
           <GripVertical className="h-4 w-4" strokeWidth={1.75} />
@@ -391,12 +692,12 @@ function PropertyRowItem({
                   role="menuitem"
                   onClick={() => {
                     setMenuOpen(false);
-                    setShowRename(true);
+                    setShowEdit(true);
                   }}
                   className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-ink hover:bg-sunken text-left"
                 >
                   <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  Umbenennen
+                  Bearbeiten
                 </button>
                 <button
                   type="button"
@@ -432,12 +733,16 @@ function PropertyRowItem({
         />
       )}
 
-      {showRename && (
-        <RenameApartmentDialog
+      {showEdit && (
+        <EditApartmentDialog
           currentName={property.name}
-          pending={renameMut.isPending}
-          onClose={() => setShowRename(false)}
-          onSubmit={(name) => renameMut.mutate({ id: property.id, name })}
+          currentGroupId={property.groupId ?? null}
+          groups={groups}
+          pending={editMut.isPending}
+          onClose={() => setShowEdit(false)}
+          onSubmit={(name, groupId) =>
+            editMut.mutate({ id: property.id, name, groupId })
+          }
         />
       )}
 
@@ -455,22 +760,27 @@ function PropertyRowItem({
 }
 
 /**
- * Simple rename modal — only the apartment name. Channex side is left as-is
- * (rename there is rare and we don't want to surprise users with a Channex
- * call from a UI label change).
+ * Edit an apartment's name + group. Changing the group here is how you move an
+ * apartment between groups (drag only reorders within a group). The Channex
+ * side is left as-is — a UI label/group change never triggers a Channex call.
  */
-function RenameApartmentDialog({
+function EditApartmentDialog({
   currentName,
+  currentGroupId,
+  groups,
   pending,
   onClose,
   onSubmit,
 }: {
   currentName: string;
+  currentGroupId: string | null;
+  groups: GroupRow[];
   pending: boolean;
   onClose: () => void;
-  onSubmit: (name: string) => void;
+  onSubmit: (name: string, groupId: string | null) => void;
 }) {
   const [name, setName] = useState(currentName);
+  const [groupId, setGroupId] = useState<string>(currentGroupId ?? '');
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -482,12 +792,12 @@ function RenameApartmentDialog({
 
   const trimmed = name.trim();
   const valid = trimmed.length >= 1 && trimmed.length <= 80;
-  const changed = trimmed !== currentName.trim();
+  const changed = trimmed !== currentName.trim() || (groupId || null) !== currentGroupId;
 
   function submit(e: FormEvent) {
     e.preventDefault();
     if (!valid || !changed) return;
-    onSubmit(trimmed);
+    onSubmit(trimmed, groupId || null);
   }
 
   return (
@@ -503,29 +813,47 @@ function RenameApartmentDialog({
         <div className="px-6 pt-6 pb-2">
           <div className="flex items-center gap-2">
             <Pencil className="h-4 w-4 text-brand" strokeWidth={1.75} />
-            <h2 className="display text-[20px] font-medium text-ink">Umbenennen</h2>
+            <h2 className="display text-[20px] font-medium text-ink">
+              Apartment bearbeiten
+            </h2>
           </div>
           <p className="mt-1 text-[12.5px] text-muted">
-            Nur die Anzeige in Rentaro wird geändert. Der Name in Channex bleibt unverändert.
+            Name und Gruppe ändern. Der Name in Channex bleibt unverändert.
           </p>
         </div>
         <form onSubmit={submit} className="px-6 pb-6 pt-4 space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="rename-name">Name</Label>
+            <Label htmlFor="edit-name">Name</Label>
             <Input
-              id="rename-name"
+              id="edit-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={80}
               autoFocus
               invalid={!valid}
             />
+            {!valid && (
+              <p className="text-[12px] text-negative">
+                Name muss zwischen 1 und 80 Zeichen lang sein.
+              </p>
+            )}
           </div>
-          {!valid && (
-            <p className="text-[12px] text-negative">
-              Name muss zwischen 1 und 80 Zeichen lang sein.
-            </p>
-          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-group">Gruppe</Label>
+            <select
+              id="edit-group"
+              value={groupId}
+              onChange={(e) => setGroupId(e.target.value)}
+              className="h-10 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none transition-colors"
+            >
+              <option value="">Ohne Gruppe</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
               Abbrechen
@@ -540,6 +868,186 @@ function RenameApartmentDialog({
             </Button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Create or edit a property group (name + color). `group` undefined = create.
+ */
+function GroupDialog({
+  group,
+  onClose,
+  onSaved,
+}: {
+  group?: GroupRow;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(group?.name ?? '');
+  const [color, setColor] = useState(group?.color ?? GROUP_COLORS[0]!);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const create = trpc.propertyGroups.create.useMutation({
+    onSuccess: () => {
+      toast.success('Gruppe erstellt');
+      onSaved();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const update = trpc.propertyGroups.update.useMutation({
+    onSuccess: () => {
+      toast.success('Gruppe gespeichert');
+      onSaved();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const pending = create.isPending || update.isPending;
+  const trimmed = name.trim();
+  const valid = trimmed.length >= 1 && trimmed.length <= 80;
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+    if (group) update.mutate({ id: group.id, name: trimmed, color });
+    else create.mutate({ name: trimmed, color });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:px-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
+      <div
+        className="relative w-full sm:max-w-[420px] bg-surface rounded-t-2xl sm:rounded-xl shadow-lg border border-line animate-fade-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 pt-6 pb-2">
+          <div className="flex items-center gap-2">
+            <FolderPlus className="h-4 w-4 text-brand" strokeWidth={1.75} />
+            <h2 className="display text-[20px] font-medium text-ink">
+              {group ? 'Gruppe bearbeiten' : 'Neue Gruppe'}
+            </h2>
+          </div>
+          <p className="mt-1 text-[12.5px] text-muted">
+            Gruppen bündeln Apartments (z. B. nach Gebäude oder Stadt).
+          </p>
+        </div>
+        <form onSubmit={submit} className="px-6 pb-6 pt-4 space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="group-name">Name</Label>
+            <Input
+              id="group-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={80}
+              placeholder="z. B. Vorrathstraße"
+              autoFocus
+              invalid={!!name && !valid}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Farbe</Label>
+            <div className="flex flex-wrap gap-2">
+              {GROUP_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  aria-label={`Farbe ${c}`}
+                  aria-pressed={color === c}
+                  className={cn(
+                    'h-7 w-7 rounded-md transition-transform',
+                    color === c
+                      ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink scale-105'
+                      : 'hover:scale-105',
+                  )}
+                  style={{ background: c }}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
+              Abbrechen
+            </Button>
+            <Button type="submit" variant="brand" loading={pending} disabled={!valid || pending}>
+              {group ? 'Speichern' : 'Erstellen'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/** Confirm dialog for deleting an (already empty) group. */
+function ConfirmDeleteGroupDialog({
+  name,
+  pending,
+  onClose,
+  onConfirm,
+}: {
+  name: string;
+  pending: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:px-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
+      <div
+        className="relative w-full sm:max-w-[420px] bg-surface rounded-t-2xl sm:rounded-xl shadow-lg border border-line animate-fade-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 pt-6 pb-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-danger" strokeWidth={1.75} />
+            <h2 className="display text-[20px] font-medium text-ink">Gruppe löschen</h2>
+          </div>
+          <p className="mt-3 text-[13px] text-ink">
+            Möchtest du die Gruppe <span className="font-medium">{name}</span> wirklich löschen?
+          </p>
+          <p className="mt-1 text-[12.5px] text-muted">
+            Die Gruppe ist leer — es werden keine Apartments gelöscht.
+          </p>
+        </div>
+        <div className="px-6 pb-6 pt-4 flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
+            Abbrechen
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            loading={pending}
+            disabled={pending}
+            onClick={onConfirm}
+            iconLeft={<Trash2 className="h-3.5 w-3.5" />}
+          >
+            Löschen
+          </Button>
+        </div>
       </div>
     </div>
   );

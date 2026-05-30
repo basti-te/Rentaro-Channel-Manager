@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq, max } from 'drizzle-orm';
-import { propertyGroups } from '@cm/db';
+import { properties, propertyGroups } from '@cm/db';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
 
 const colorSchema = z
@@ -65,6 +65,27 @@ export const propertyGroupsRouter = router({
   delete: editorProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      // Refuse to delete a non-empty group. The FK is ON DELETE SET NULL, so
+      // deleting would silently orphan apartments to "Ungrouped" — the
+      // operator should consciously empty/move them first.
+      const stillInGroup = await ctx.db
+        .select({ id: properties.id })
+        .from(properties)
+        .where(
+          and(
+            eq(properties.groupId, input.id),
+            eq(properties.tenantId, ctx.tenantId!),
+          ),
+        )
+        .limit(1);
+      if (stillInGroup.length > 0) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message:
+            'Gruppe ist nicht leer. Bitte zuerst alle Apartments daraus entfernen oder verschieben.',
+        });
+      }
+
       const result = await ctx.db
         .delete(propertyGroups)
         .where(
