@@ -97,34 +97,40 @@ Env vars live in three places (do NOT rely on `.env.local` for prod state):
   function catches per-row, so `onFailure` won't fire — needs an explicit
   hook); mails are German-only.
 
-### 🟡 Holding pattern — needs operator action
+### ✅ GO-LIVE COMPLETE (2026-05-30)
 
-The operator wants a **fresh start** before going live with OTAs:
+The full OTA cutover is done and **verified against production Channex**:
 
-1. Delete the 16 connected apartments **via UI** (apartment kebab → Delete).
-   Cascade rules clean everything below (bookings, rate overrides,
-   blocks, channex_properties mapping). The 16 USD-currency Channex
-   Properties stay orphan in `app.channex.io` and can be archived
-   manually there.
-2. Pull a fresh Guesty CSV (current state, not the older snapshot).
-3. Re-create 16 apartments in Rentaro (Whg 0 + Whg 1–13 + Whg 17, 18 — the
-   gaps are Whg 14/15/16 which never existed).
-4. Re-import via `pnpm db:import-guesty "<path-to-fresh-export.xls>"`.
-5. Click **Verbinden** on each apartment → creates 16 fresh **EUR**
-   Channex Properties (we confirmed `tenants.default_currency = 'EUR'`).
-6. In `app.channex.io`: map Airbnb / Booking.com / Vrbo channels per
-   property (OAuth flows + listing selection).
-7. Disconnect the OTAs from Guesty (otherwise both push).
-8. One Full Sync per apartment from the Apartments page.
-9. **Connect PriceLabs** (ADR 0006 — direct PriceLabs ↔ Channex, no
-   connector to build). In the PriceLabs UI, link the **production**
-   Channex account (paste the prod Channex API key). Let PriceLabs pull
-   listings + push its first price set. THEN flip rate ownership in-app:
-   Settings → **Preis-Quelle** → PriceLabs (admin `settings.setRateSource`).
-   That makes the ARI flusher stop pushing the `rate` field (it keeps
-   pushing restrictions) and re-asserts a 180-day window. **Flip AFTER
-   PriceLabs is live** — flipping first leaves listings with no rate
-   (we'd suppress it before PriceLabs has pushed one).
+1. ✅ 16 apartments created + connected (CITY APARTMENTS ESSEN tenant, all EUR).
+2. ✅ Airbnb + Booking.com mapped per apartment (self-service via the new
+   `/channels` iframe). Booking pricing type = **Standard** (per-room), not OBP.
+3. ✅ Guesty disconnected from the OTAs (Channex is now the sole channel manager).
+4. ✅ 2.817 bookings imported (`pnpm db:import-guesty`, tenant default).
+5. ✅ PriceLabs connected (ADR 0006 direct integration) and pushing **variable
+   daily prices** into Channex — verified read-back showed 24–48 distinct
+   rates/apartment (not the old 350-flat default). PriceLabs update-type is
+   **Price only**.
+6. ✅ **Preis-Quelle = PriceLabs** (Settings toggle). Decision (2026-05-30):
+   **PriceLabs owns prices; Rentaro keeps min-stay / stop-sell / CTA-CTD +
+   availability.** Clean split, no two-writer conflict. (To revisit: would need
+   PriceLabs update-type "Price and Restrictions" AND suppressing min_stay/CTA
+   in the ARI flusher — deliberately NOT done.)
+7. ✅ Full Sync run for all apartments — availability now in Channex; verified
+   Channex blocked-days ≥ DB booked-nights for all 16.
+
+**Known event:** one double-booking slipped in during the mapping→full-sync
+window (the listings were live on OTAs before availability was pushed).
+Operator handled it manually. For any future tenant onboarding, **push Full
+Sync immediately after channel mapping** to shrink that window.
+
+### Where things run now (steady state)
+
+- **PriceLabs** → daily prices → **Channex** → OTAs.
+- **Rentaro** → availability (from bookings/blocks) + restrictions → **Channex** → OTAs.
+- **OTA bookings** → Channex webhook → `ingest-bookings` → Rentaro DB (+ e-mail
+  notifications once RESEND_* + the migration are live; see notifications item).
+- Calendar shows PriceLabs prices read back from Channex (brand-colored); the
+  rate editor is locked in PriceLabs mode.
 
 **Reset is the operator's call to actually execute** — all tools are
 ready. See `pnpm db:disconnect-channex --apply` if a full programmatic
