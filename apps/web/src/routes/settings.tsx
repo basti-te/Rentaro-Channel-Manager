@@ -412,31 +412,3 @@ function SmsSenderSection({
     </SectionCard>
   );
 }
-
-function NotifyToggleRow({
-  label,
-  desc,
-  checked,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  desc: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-      <div className="min-w-0">
-        <div className="text-[13.5px] text-ink">{label}</div>
-        <div className="text-[12px] text-muted">{desc}</div>
-      </div>
-      <Switch
-        size="sm"
-        checked={checked}
-        onChange={onChange}
-        disabled={disabled}
-        aria-label={label}
-      />
-    </div>
