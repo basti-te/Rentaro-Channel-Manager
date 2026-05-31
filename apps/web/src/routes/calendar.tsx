@@ -133,9 +133,11 @@ export function CalendarPage() {
     return map;
   }, [overridesQ.data, start]);
 
-  // propertyId → dayIdx → effective Channex (PriceLabs) rate in cents.
+  // propertyId → dayIdx → effective Channex (PriceLabs) rate-cents + min-stay.
+  // In PriceLabs mode BOTH come from Channex; the calendar shows them instead
+  // of our stale local defaults.
   const externalRatesByProperty = useMemo(() => {
-    const map = new Map<string, Map<number, number>>();
+    const map = new Map<string, Map<number, { rateCents: number | null; minStay: number | null }>>();
     for (const r of externalRatesQ.data ?? []) {
       const idx = differenceInCalendarDays(new Date(`${r.date}T00:00:00`), start);
       if (idx < 0 || idx >= VIEWPORT_DAYS) continue;
@@ -144,7 +146,7 @@ export function CalendarPage() {
         inner = new Map();
         map.set(r.propertyId, inner);
       }
-      inner.set(idx, r.rateCents);
+      inner.set(idx, { rateCents: r.rateCents, minStay: r.minStay });
     }
     return map;
   }, [externalRatesQ.data, start]);

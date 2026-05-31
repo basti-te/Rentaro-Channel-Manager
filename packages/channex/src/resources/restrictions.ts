@@ -2,11 +2,13 @@ import type { ChannexHttpClient } from '../client';
 import { RestrictionUpdate } from '../schemas/restriction';
 import { parseTaskIds } from '../schemas/common';
 
-/** One day's read-back rate for a rate plan. */
+/** One day's read-back rate + stay restriction for a rate plan. */
 export interface DayRate {
   date: string; // YYYY-MM-DD
   /** Nightly rate in MINOR units (cents). Null if Channex returned none. */
   rateCents: number | null;
+  /** Minimum stay (nights, arrival-based). Null if Channex returned none. */
+  minStay: number | null;
 }
 
 /**
@@ -61,7 +63,10 @@ export class RestrictionsAPI {
     dateTo: string; // YYYY-MM-DD inclusive
   }): Promise<DayRate[]> {
     const res = await this.http.request<{
-      data?: Record<string, Record<string, { rate?: string | null }>>;
+      data?: Record<
+        string,
+        Record<string, { rate?: string | null; min_stay_arrival?: string | number | null }>
+      >;
     }>({
       method: 'GET',
       path: '/restrictions',
@@ -69,7 +74,7 @@ export class RestrictionsAPI {
         'filter[property_id]': params.propertyId,
         'filter[date][gte]': params.dateFrom,
         'filter[date][lte]': params.dateTo,
-        'filter[restrictions]': 'rate',
+        'filter[restrictions]': 'rate,min_stay_arrival',
       },
     });
 
@@ -77,10 +82,13 @@ export class RestrictionsAPI {
     const out: DayRate[] = [];
     for (const [date, v] of Object.entries(byDate)) {
       const raw = v?.rate;
-      const num = raw == null || raw === '' ? null : Number(raw);
+      const rateNum = raw == null || raw === '' ? null : Number(raw);
+      const msRaw = v?.min_stay_arrival;
+      const msNum = msRaw == null || msRaw === '' ? null : Number(msRaw);
       out.push({
         date,
-        rateCents: num != null && Number.isFinite(num) ? Math.round(num * 100) : null,
+        rateCents: rateNum != null && Number.isFinite(rateNum) ? Math.round(rateNum * 100) : null,
+        minStay: msNum != null && Number.isFinite(msNum) ? msNum : null,
       });
     }
     return out;

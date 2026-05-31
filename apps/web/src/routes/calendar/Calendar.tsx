@@ -76,12 +76,15 @@ interface Props {
   /** Per-day rate/restriction overrides, keyed propertyId → dayIdx → cell. */
   overridesByProperty?: Map<string, Map<number, OverrideCell>>;
   /**
-   * Effective per-day rates read back from Channex (cents), keyed
-   * propertyId → dayIdx → cents. Set only in PriceLabs mode — when present for
-   * a free day, it's shown as the cell rate (these are the PriceLabs prices)
-   * instead of our property default. Read-only display.
+   * Effective per-day rate + min-stay read back from Channex, keyed
+   * propertyId → dayIdx. Set only in PriceLabs mode — when present for a free
+   * day, these (the PriceLabs values) are shown instead of our local rate /
+   * min-stay defaults. Read-only display. Either field may be null per day.
    */
-  externalRatesByProperty?: Map<string, Map<number, number>>;
+  externalRatesByProperty?: Map<
+    string,
+    Map<number, { rateCents: number | null; minStay: number | null }>
+  >;
   onSelectRange?: (result: SelectionResult) => void;
   onBookingClick?: (bookingId: string) => void;
   onSyncProperty?: (propertyId: string) => void;
@@ -529,8 +532,8 @@ function PropertyRow({
   bookings: Booking[];
   occupied: Set<number>;
   overrides: Map<number, OverrideCell> | undefined;
-  /** PriceLabs effective rate per dayIdx (cents), read back from Channex. */
-  externalRates: Map<number, number> | undefined;
+  /** PriceLabs effective rate (cents) + min-stay per dayIdx, from Channex. */
+  externalRates: Map<number, { rateCents: number | null; minStay: number | null }> | undefined;
   start: Date;
   dayCount: number;
   selectionRange: { from: number; to: number } | null;
@@ -565,12 +568,13 @@ function PropertyRow({
           const inRange =
             selectionRange != null && i >= selectionRange.from && i <= selectionRange.to;
 
-          // Effective per-day rate for the label. Precedence:
-          //   PriceLabs rate (read back from Channex) > our override > default.
+          // Effective per-day rate + min-stay for the labels. Precedence:
+          //   PriceLabs value (read back from Channex) > our override > default.
           // externalRates is only populated in PriceLabs mode; in PMS mode it's
           // undefined, so this reduces to the prior override-vs-default logic.
           const ov = overrides?.get(i);
-          const extCents = externalRates?.get(i);
+          const ext = externalRates?.get(i);
+          const extCents = ext?.rateCents ?? null;
           const hasExternalRate = extCents != null;
           const hasRateOverride = !hasExternalRate && ov?.rateCents != null;
           const rateLabel = hasExternalRate
@@ -578,7 +582,12 @@ function PropertyRow({
             : hasRateOverride
               ? formatRate(ov!.rateCents, property.currency)
               : defaultRateLabel;
-          const cellMinStay = ov?.minStay ?? defaultMinStay;
+          // Min-stay: PriceLabs (Channex) wins, else local override, else default.
+          const extMinStay = ext?.minStay ?? null;
+          const hasExternalMinStay = extMinStay != null;
+          const cellMinStay = hasExternalMinStay
+            ? extMinStay
+            : ov?.minStay ?? defaultMinStay;
           const stopSell = ov?.stopSell === true;
           return (
             <div
@@ -629,12 +638,15 @@ function PropertyRow({
                 <span
                   className={cn(
                     'text-[9px] leading-none mt-1 tracking-[0.04em]',
-                    ov?.minStay != null
-                      ? 'text-ink-soft/80'
-                      : isToday
-                        ? 'text-brand/60'
-                        : 'text-whisper/70',
+                    hasExternalMinStay
+                      ? 'text-brand/80 font-medium'
+                      : ov?.minStay != null
+                        ? 'text-ink-soft/80'
+                        : isToday
+                          ? 'text-brand/60'
+                          : 'text-whisper/70',
                   )}
+                  title={hasExternalMinStay ? 'Mindestaufenthalt von PriceLabs (über Channex)' : undefined}
                 >
                   <span className="num">{cellMinStay}</span> D
                 </span>

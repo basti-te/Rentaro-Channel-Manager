@@ -184,12 +184,12 @@ export const ratesRouter = router({
     }),
 
   /**
-   * Read the EFFECTIVE nightly rates Channex currently holds, per connected
-   * property, over [from, to). Only meaningful when the tenant uses PriceLabs
-   * (rateSource='pricelabs') — then these ARE the PriceLabs prices, since
-   * Channex is the hub PriceLabs writes into. Returns [] for PMS-mode tenants
-   * (the calendar already shows our own rate there) so we never burn Channex
-   * read-quota needlessly.
+   * Read the EFFECTIVE nightly rates + min-stay Channex currently holds, per
+   * connected property, over [from, to). Only meaningful when the tenant uses
+   * PriceLabs (rateSource='pricelabs') — then these ARE the PriceLabs values,
+   * since Channex is the hub PriceLabs writes into. Returns [] for PMS-mode
+   * tenants (the calendar already shows our own rate/min-stay there) so we
+   * never burn Channex read-quota needlessly.
    *
    * Read-only. Cached + paced for the 10-reads/min/property Channex limit.
    * Properties that error (or aren't mapped) are simply omitted.
@@ -206,7 +206,12 @@ export const ratesRouter = router({
           .limit(1)
       )[0];
       if (!tenant || tenant.rateSource !== 'pricelabs') {
-        return [] as Array<{ propertyId: string; date: string; rateCents: number }>;
+        return [] as Array<{
+          propertyId: string;
+          date: string;
+          rateCents: number | null;
+          minStay: number | null;
+        }>;
       }
 
       // Connected properties for this tenant + their Channex ids.
@@ -236,7 +241,12 @@ export const ratesRouter = router({
       })();
 
       const now = Date.now();
-      const out: Array<{ propertyId: string; date: string; rateCents: number }> = [];
+      const out: Array<{
+        propertyId: string;
+        date: string;
+        rateCents: number | null;
+        minStay: number | null;
+      }> = [];
 
       await Promise.all(
         mapped.map(async (m) => {
@@ -261,8 +271,14 @@ export const ratesRouter = router({
             }
           }
           for (const r of rates) {
-            if (r.rateCents != null) {
-              out.push({ propertyId: m.propertyId, date: r.date, rateCents: r.rateCents });
+            // Emit a row if Channex returned either value for the day.
+            if (r.rateCents != null || r.minStay != null) {
+              out.push({
+                propertyId: m.propertyId,
+                date: r.date,
+                rateCents: r.rateCents,
+                minStay: r.minStay,
+              });
             }
           }
         }),
