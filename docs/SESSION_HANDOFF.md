@@ -8,8 +8,8 @@ Everything below is committed + pushed; git HEAD `d4b98e7` on `main`._
   `/channels` iframe), Guesty disconnected, 2.8k bookings imported, PriceLabs
   pushing variable prices, Preis-Quelle=PriceLabs, Full Sync done. Verified
   against prod Channex. (Details in the GO-LIVE section below.)
-- **E-mail notifications** (Resend) — live; migration applied, domain verified,
-  Railway env set, worker redeployed. Set address + toggles in Settings.
+- **E-mail notifications** (Resend) — LIVE & VERIFIED (2026-05-31): address +
+  toggles set in Settings, real alerts confirmed firing on inbound events.
 - **Self-service channel mapping** (`/channels`) + **groups CRUD/drag-reorder**
   + **calendar today-marker/mobile fixes**.
 - **PriceLabs prices shown in calendar** (read back from Channex) + rate editor
