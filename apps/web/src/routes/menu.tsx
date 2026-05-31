@@ -6,6 +6,8 @@ import {
   Plug,
   Settings,
   Star,
+  Users,
+  Bell,
   ChevronRight,
   type LucideIcon,
 } from 'lucide-react';
@@ -30,8 +32,10 @@ const LINKS: MenuLink[] = [
   { to: '/overview',   label: 'Übersicht',    icon: LayoutGrid, description: 'Stats und Schnellzugriffe' },
   { to: '/apartments', label: 'Apartments',   icon: Building2,  description: 'Inventar verwalten, Gruppen, Mapping' },
   { to: '/channels',   label: 'Kanäle',       icon: Plug,       description: 'Airbnb / Booking.com Listings verbinden' },
-  { to: '/settings',   label: 'Einstellungen',icon: Settings,   description: 'Account, Abo, Listings, Rechnungen' },
-  { to: '/reviews',    label: 'Bewertungen',  icon: Star,       description: 'Auto-Review-Regeln, Freigabe-Logik',   badge: 'soon', disabled: true },
+  { to: '/reviews',    label: 'Bewertungen',  icon: Star,       description: 'Auto-Review-Vorlagen nach Checkout' },
+  { to: '/teammates',  label: 'Teammates',    icon: Users,      description: 'Cleaner / interne SMS-Empfänger' },
+  { to: '/notifications', label: 'Benachrichtigungen', icon: Bell, description: 'E-Mail-Alerts bei Buchungen & Fehlern' },
+  { to: '/settings',   label: 'Einstellungen',icon: Settings,   description: 'Account, Abo, Preis-Quelle, SMS' },
 ];
 
 export function MenuPage() {

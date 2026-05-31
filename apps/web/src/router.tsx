@@ -21,6 +21,9 @@ import { MessagesPage } from './routes/messages';
 import { CleaningPage } from './routes/cleaning';
 import { MenuPage } from './routes/menu';
 import { SettingsPage } from './routes/settings';
+import { NotificationsPage } from './routes/notifications';
+import { TeammatesPage } from './routes/teammates';
+import { ReviewsPage } from './routes/reviews';
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -130,6 +133,24 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 });
 
+const notificationsRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/notifications',
+  component: NotificationsPage,
+});
+
+const teammatesRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/teammates',
+  component: TeammatesPage,
+});
+
+const reviewsRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/reviews',
+  component: ReviewsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   landingRoute,
   loginRoute,
@@ -146,6 +167,9 @@ const routeTree = rootRoute.addChildren([
     cleaningRoute,
     menuRoute,
     settingsRoute,
+    notificationsRoute,
+    teammatesRoute,
+    reviewsRoute,
   ]),
 ]);
 

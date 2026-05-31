@@ -15,7 +15,8 @@ const TABS: Tab[] = [
   { to: '/messages', label: 'Nachrichten',icon: MessageSquare },
   { to: '/cleaning', label: 'Reinigung',  icon: SprayCan },
   { to: '/menu',     label: 'Menü',       icon: Menu,
-    matchPaths: ['/', '/overview', '/apartments', '/settings'] },
+    matchPaths: ['/', '/overview', '/apartments', '/channels', '/settings',
+      '/reviews', '/teammates', '/notifications'] },
 ];
 
 /**

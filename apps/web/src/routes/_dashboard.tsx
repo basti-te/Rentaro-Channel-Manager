@@ -8,6 +8,9 @@ import {
   Plug,
   Settings,
   SprayCan,
+  Star,
+  Users,
+  Bell,
   LogOut,
   ChevronRight,
   type LucideIcon,
@@ -31,13 +34,16 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { to: '/calendar',   label: 'Calendar',   icon: Calendar },
-  { to: '/apartments', label: 'Apartments', icon: Building2 },
-  { to: '/channels',   label: 'Kanäle',     icon: Plug },
-  { to: '/overview',   label: 'Overview',   icon: LayoutGrid },
-  { to: '/messages',   label: 'Messages',   icon: MessageSquare },
-  { to: '/cleaning',   label: 'Cleaning',   icon: SprayCan },
-  { to: '/settings',   label: 'Settings',   icon: Settings },
+  { to: '/calendar',   label: 'Calendar',        icon: Calendar },
+  { to: '/apartments', label: 'Apartments',      icon: Building2 },
+  { to: '/channels',   label: 'Kanäle',          icon: Plug },
+  { to: '/overview',   label: 'Overview',        icon: LayoutGrid },
+  { to: '/messages',   label: 'Messages',        icon: MessageSquare },
+  { to: '/cleaning',   label: 'Cleaning',        icon: SprayCan },
+  { to: '/reviews',    label: 'Bewertungen',     icon: Star },
+  { to: '/teammates',  label: 'Teammates',       icon: Users },
+  { to: '/notifications', label: 'Benachrichtigungen', icon: Bell },
+  { to: '/settings',   label: 'Settings',        icon: Settings },
 ];
 
 export function DashboardLayout() {
