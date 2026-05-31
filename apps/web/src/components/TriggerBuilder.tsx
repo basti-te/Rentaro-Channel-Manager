@@ -25,6 +25,12 @@ export interface TriggerParts {
   time: string; // HH:MM
   /** Last-minute mode: max days between booking and check-in to qualify (1–90). */
   thresholdDays: number;
+  /**
+   * Optional min lead time (days). Only for checkin + rel='before': fire only
+   * if the booking was made at least this many days before check-in. 0/undefined
+   * = no guard. Used to avoid overlap with a last-minute template.
+   */
+  minLeadDays?: number;
 }
 
 const ANCHOR_LABEL: Record<Anchor, string> = {
@@ -72,7 +78,12 @@ export function buildTriggerDsl(p: TriggerParts): string {
   }
   if (p.rel === 'on') return `${p.anchor}:+0d@${p.time}`;
   const sign = p.rel === 'before' ? '-' : '+';
-  return `${p.anchor}:${sign}${p.days}d@${p.time}`;
+  let dsl = `${p.anchor}:${sign}${p.days}d@${p.time}`;
+  // Min-lead guard only makes sense for "X days before check-in".
+  if (p.anchor === 'checkin' && p.rel === 'before' && p.minLeadDays && p.minLeadDays >= 1) {
+    dsl += `~minlead=${Math.min(90, Math.round(p.minLeadDays))}d`;
+  }
+  return dsl;
 }
 
 export function parseTriggerDsl(s: string): TriggerParts {
@@ -89,12 +100,19 @@ export function parseTriggerDsl(s: string): TriggerParts {
       thresholdDays: Math.max(1, Math.min(90, Number(lm[1]) || DEFAULTS.thresholdDays)),
     };
   }
-  const m = /^(reservation|checkin|checkout):([+-]?\d{1,3})d@(\d\d:\d\d)$/.exec(s);
+  const m = /^(reservation|checkin|checkout):([+-]?\d{1,3})d@(\d\d:\d\d)(?:~minlead=(\d{1,3})d)?$/.exec(s);
   if (!m) return { anchor: 'checkin', rel: 'before', days: 1, time: '18:00', thresholdDays: DEFAULTS.thresholdDays };
   const off = Number(m[2]);
   const anchor = m[1] as Anchor;
   const rel: Rel = off === 0 ? 'on' : off < 0 ? 'before' : 'after';
-  return { anchor, rel, days: Math.min(90, Math.abs(off) || 1), time: m[3]!, thresholdDays: DEFAULTS.thresholdDays };
+  return {
+    anchor,
+    rel,
+    days: Math.min(90, Math.abs(off) || 1),
+    time: m[3]!,
+    thresholdDays: DEFAULTS.thresholdDays,
+    ...(m[4] != null ? { minLeadDays: Math.min(90, Number(m[4])) } : {}),
+  };
 }
 
 const SELECT_CLS =
@@ -220,6 +238,46 @@ export function TriggerBuilder({
           <p className="text-[11px] text-whisper">
             Uhrzeit in lokaler Zeit des Apartments.
           </p>
+
+          {/* Min-lead guard — only meaningful for "X days before check-in". */}
+          {anchor === 'checkin' && rel === 'before' && (
+            <label className="flex items-start gap-2 pt-1">
+              <input
+                type="checkbox"
+                checked={(minLeadDays ?? 0) >= 1}
+                onChange={(e) =>
+                  onChange({
+                    ...value,
+                    minLeadDays: e.target.checked ? Math.max(1, days) : undefined,
+                  })
+                }
+                className="mt-0.5"
+              />
+              <span className="text-[11.5px] text-muted">
+                Nur senden, wenn die Buchung mindestens{' '}
+                {(minLeadDays ?? 0) >= 1 ? (
+                  <input
+                    type="number"
+                    min={1}
+                    max={90}
+                    value={minLeadDays}
+                    onChange={(e) =>
+                      onChange({
+                        ...value,
+                        minLeadDays: Math.max(1, Math.min(90, Number(e.target.value) || 1)),
+                      })
+                    }
+                    className="mx-1 w-14 h-7 rounded border border-line bg-surface px-1.5 text-[12px] text-ink"
+                    aria-label="Mindestvorlauf in Tagen"
+                  />
+                ) : (
+                  ' X '
+                )}
+                Tage im Voraus erfolgte (verhindert Doppelung mit der
+                Last-Minute-Vorlage).
+              </span>
+            </label>
+          )}
         </>
       )}
     </div>

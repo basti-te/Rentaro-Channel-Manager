@@ -11,6 +11,11 @@
  *                                booking is made ≤ N days before check-in
  *                                (last-minute). No fixed clock time — sends at
  *                                any hour (e.g. 23:00). For the door-code case.
+ *   checkin:-1d@18:00~minlead=2d → as above, but ONLY fire if the booking was
+ *                                made ≥ 2 days before check-in. The mirror of
+ *                                `lastminute`: pair them (lastminute:2d +
+ *                                minlead=2d) so a booking gets exactly ONE
+ *                                check-in message, never both, never none.
  *
  * Times are property-local; we resolve them to a real UTC instant using the
  * tenant timezone (DST-correct via Intl, no date lib needed).
@@ -26,10 +31,12 @@ export interface ParsedTrigger {
   minute?: number;
   /** lastminute: max days between booking creation and check-in to qualify. */
   thresholdDays?: number;
+  /** anchored: only fire if booking was made ≥ this many days before check-in. */
+  minLeadDays?: number;
 }
 
 const ANCHORED_RE =
-  /^(reservation|checkin|checkout):([+-]?\d{1,3})d@([01]\d|2[0-3]):([0-5]\d)$/;
+  /^(reservation|checkin|checkout):([+-]?\d{1,3})d@([01]\d|2[0-3]):([0-5]\d)(?:~minlead=(\d{1,3})d)?$/;
 const LASTMINUTE_RE = /^lastminute:(\d{1,3})d$/;
 
 export function parseTrigger(raw: string): ParsedTrigger | null {
@@ -48,12 +55,15 @@ export function parseTrigger(raw: string): ParsedTrigger | null {
   if (!m) return null;
   const dayOffset = Number(m[2]);
   if (Math.abs(dayOffset) > 90) return null; // builder caps at 1–90 days
+  const minLead = m[5] != null ? Number(m[5]) : undefined;
+  if (minLead != null && (minLead < 1 || minLead > 90)) return null;
   return {
     kind: 'anchored',
     anchor: m[1] as TriggerAnchor,
     dayOffset,
     hour: Number(m[3]),
     minute: Number(m[4]),
+    ...(minLead != null ? { minLeadDays: minLead } : {}),
   };
 }
 
@@ -170,6 +180,16 @@ export function computeDueAt(trigger: string, ctx: DueContext): Date | null {
     const daysUntilCheckin = daysBetweenYmd(createdYmd, ctx.checkin);
     if (daysUntilCheckin < 0 || daysUntilCheckin > p.thresholdDays!) return null;
     return ctx.createdAt;
+  }
+
+  // Optional min-lead-time guard: skip if booked too close to check-in. This
+  // is what keeps a "1 day before check-in" template from ALSO firing on a
+  // last-minute booking (where it would otherwise fire immediately via the
+  // dispatcher's grace window) — pair it with a `lastminute:Nd` template.
+  if (p.minLeadDays != null) {
+    const createdYmd = utcToZonedYmd(ctx.createdAt, ctx.timeZone);
+    const daysUntilCheckin = daysBetweenYmd(createdYmd, ctx.checkin);
+    if (daysUntilCheckin < p.minLeadDays) return null;
   }
 
   const base =
