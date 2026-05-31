@@ -30,7 +30,7 @@ const LINKS: MenuLink[] = [
   { to: '/overview',   label: 'Übersicht',    icon: LayoutGrid, description: 'Stats und Schnellzugriffe' },
   { to: '/apartments', label: 'Apartments',   icon: Building2,  description: 'Inventar verwalten, Gruppen, Mapping' },
   { to: '/channels',   label: 'Kanäle',       icon: Plug,       description: 'Airbnb / Booking.com Listings verbinden' },
-  { to: '/settings',   label: 'Einstellungen',icon: Settings,   description: 'Account, Abo, Listings, Rechnungen', badge: 'soon', disabled: true },
+  { to: '/settings',   label: 'Einstellungen',icon: Settings,   description: 'Account, Abo, Listings, Rechnungen' },
   { to: '/reviews',    label: 'Bewertungen',  icon: Star,       description: 'Auto-Review-Regeln, Freigabe-Logik',   badge: 'soon', disabled: true },
 ];
 
