@@ -125,7 +125,7 @@ export function TriggerBuilder({
   value: TriggerParts;
   onChange: (p: TriggerParts) => void;
 }) {
-  const { anchor, rel, days, time, thresholdDays } = value;
+  const { anchor, rel, days, time, thresholdDays, minLeadDays } = value;
   const isLastMinute = anchor === 'lastminute';
 
   function changeAnchor(a: Anchor) {
