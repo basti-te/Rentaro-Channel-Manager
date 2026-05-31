@@ -12,13 +12,29 @@ Everything below is committed + pushed; git HEAD `d4b98e7` on `main`._
   toggles set in Settings, real alerts confirmed firing on inbound events.
 - **Self-service channel mapping** (`/channels`) + **groups CRUD/drag-reorder**
   + **calendar today-marker/mobile fixes**.
-- **PriceLabs prices shown in calendar** (read back from Channex) + rate editor
-  locked in PriceLabs mode + settings hint.
+- **PriceLabs prices + min-stay shown in calendar** (both read back from
+  Channex; commits `…`/`9cb4c5f`) + rate editor locks price AND min-stay in
+  PriceLabs mode + settings hint. Min-stay ownership moved to PriceLabs
+  (`0df9f31`) — ARI flusher suppresses all stay restrictions in pricelabs mode;
+  operator set PriceLabs update-type to "Price and Restrictions"; verified
+  variable min-stay landing in Channex.
 - **Live calendar** — inbound bookings appear without reload (`useBookingsRealtime`).
+- **Desktop/mobile parity** — Reviews/Teammates/Notifications split out of
+  Settings into own pages (`/reviews`, `/teammates`, `/notifications`), in both
+  sidebar + mobile menu; mobile Settings link un-greyed.
 - **Auth fix** — both Sebastian users (gmail magic-link, googlemail +Google) now
   own CITY APARTMENTS ESSEN; Google login on the iPhone PWA works.
 - **Cleaning-calendar fix** (`d4b98e7`) — public `/cal/:slug` now uses an
   overlap date filter, so in-progress stays show (was check-in-in-window only).
+
+**Open / parked:**
+- PriceLabs parent/child listings: operator asked PriceLabs support how to
+  drop the unused PARENT (old direct) listings without un-mapping/disabling the
+  CHILD listings (the CHILDs are the Channex-connected ones that push price +
+  restrictions). Do NOT "Disable Child Listing Sync" / "Un-map" — both kill the
+  live pipeline. Availability stays with Rentaro, so no double-booking risk
+  regardless.
+- Auto-Review Phase B still needs a real Airbnb review to validate, then a cron.
 
 **Open / next:**
 - Auto-Review Phase B still needs a real Airbnb review to validate, then a cron.
