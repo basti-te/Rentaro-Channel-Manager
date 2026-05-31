@@ -310,10 +310,19 @@ function TemplateDialog({
     new Set(template?.listingIds ?? []),
   );
   const [testPhone, setTestPhone] = useState('');
+  const [testPropertyId, setTestPropertyId] = useState('');
   const [preview, setPreview] = useState<string | null>(null);
 
   const varsQ = trpc.messageTemplates.vars.useQuery();
   const propsQ = trpc.properties.list.useQuery();
+
+  // Default the test apartment to the first one in the template's allow-list
+  // (else the first apartment overall) so custom vars resolve out of the box.
+  useEffect(() => {
+    if (testPropertyId) return;
+    const first = [...listingIds][0] ?? propsQ.data?.[0]?.id;
+    if (first) setTestPropertyId(first);
+  }, [listingIds, propsQ.data, testPropertyId]);
 
   const create = trpc.messageTemplates.create.useMutation({
     onSuccess: () => {
@@ -546,6 +555,25 @@ function TemplateDialog({
                 {preview}
               </div>
             )}
+            <div className="space-y-1">
+              <Label htmlFor="t-test-apt">Vorschau/Test für Apartment</Label>
+              <select
+                id="t-test-apt"
+                value={testPropertyId}
+                onChange={(e) => setTestPropertyId(e.target.value)}
+                className="h-9 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none transition-colors"
+              >
+                {(propsQ.data ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-whisper">
+                Eigene Variablen wie {`{{wifiCode}}`} werden mit den Werten
+                dieses Apartments gefüllt.
+              </p>
+            </div>
             <div className="flex gap-2">
               <Input
                 value={testPhone}
@@ -564,6 +592,7 @@ function TemplateDialog({
                     body,
                     channel: chan,
                     toPhone: testPhone.trim() || undefined,
+                    propertyId: testPropertyId || undefined,
                   })
                 }
                 disabled={!body.trim()}

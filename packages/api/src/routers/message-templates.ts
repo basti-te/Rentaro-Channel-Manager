@@ -10,6 +10,7 @@ import {
 } from '@cm/db';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
 import { renderTemplate, SAMPLE_VARS, TEMPLATE_VARS } from '../services/templates';
+import { resolveCustomVars } from '../services/custom-vars';
 import { sendSms } from '../services/twilio';
 import { parseTrigger } from '../services/triggers';
 import type { Database } from '@cm/db';
@@ -238,10 +239,38 @@ export const messageTemplatesRouter = router({
         body: z.string().min(1).max(2000),
         channel,
         toPhone: phone.optional(),
+        /** Resolve custom per-apartment vars for this apartment in the preview. */
+        propertyId: z.string().uuid().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const preview = renderTemplate(input.body, SAMPLE_VARS);
+      // Built-in vars use realistic sample values (no real booking in a test).
+      // Custom per-apartment vars ({{wifiCode}}, {{wohnungSafeCode}}, …) are
+      // resolved for the chosen apartment so the preview/test matches what a
+      // guest would actually receive. Without a chosen apartment we can only
+      // fill the built-ins; custom keys then stay visible (as before).
+      let vars = { ...SAMPLE_VARS };
+      if (input.propertyId) {
+        // Verify the apartment belongs to this tenant, and use its real name.
+        const prop = (
+          await ctx.db
+            .select({ id: properties.id, name: properties.name })
+            .from(properties)
+            .where(
+              and(
+                eq(properties.id, input.propertyId),
+                eq(properties.tenantId, ctx.tenantId!),
+              ),
+            )
+            .limit(1)
+        )[0];
+        if (!prop) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Apartment not in tenant' });
+        }
+        const custom = await resolveCustomVars(ctx.db, ctx.tenantId!, input.propertyId);
+        vars = { ...vars, propertyName: prop.name, ...custom };
+      }
+      const preview = renderTemplate(input.body, vars);
 
       if (input.channel !== 'sms') {
         return {
