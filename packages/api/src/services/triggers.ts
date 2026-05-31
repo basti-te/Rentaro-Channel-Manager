@@ -7,6 +7,10 @@
  *   checkin:+0d@10:00          → day of check-in, 10:00 local
  *   checkout:+0d@10:00         → day of check-out, 10:00 local
  *   <checkin|checkout>:<±N>d@<HH:MM>
+ *   lastminute:1d              → fire IMMEDIATELY on booking, but ONLY when the
+ *                                booking is made ≤ N days before check-in
+ *                                (last-minute). No fixed clock time — sends at
+ *                                any hour (e.g. 23:00). For the door-code case.
  *
  * Times are property-local; we resolve them to a real UTC instant using the
  * tenant timezone (DST-correct via Intl, no date lib needed).
@@ -15,20 +19,31 @@
 export type TriggerAnchor = 'reservation' | 'checkin' | 'checkout';
 
 export interface ParsedTrigger {
-  kind: 'booking_created' | 'anchored';
+  kind: 'booking_created' | 'anchored' | 'lastminute';
   anchor?: TriggerAnchor;
   dayOffset?: number; // signed, e.g. -1, 0, 2
   hour?: number;
   minute?: number;
+  /** lastminute: max days between booking creation and check-in to qualify. */
+  thresholdDays?: number;
 }
 
 const ANCHORED_RE =
   /^(reservation|checkin|checkout):([+-]?\d{1,3})d@([01]\d|2[0-3]):([0-5]\d)$/;
+const LASTMINUTE_RE = /^lastminute:(\d{1,3})d$/;
 
 export function parseTrigger(raw: string): ParsedTrigger | null {
   const s = raw.trim();
   // Legacy: bare "booking_created" fires at the exact creation instant.
   if (s === 'booking_created') return { kind: 'booking_created' };
+
+  const lm = LASTMINUTE_RE.exec(s);
+  if (lm) {
+    const thresholdDays = Number(lm[1]);
+    if (thresholdDays < 1 || thresholdDays > 90) return null;
+    return { kind: 'lastminute', thresholdDays };
+  }
+
   const m = ANCHORED_RE.exec(s);
   if (!m) return null;
   const dayOffset = Number(m[2]);
@@ -90,6 +105,15 @@ function zonedWallTimeToUtc(
   return guess;
 }
 
+/** Whole calendar days from YYYY-MM-DD `a` to `b` (b − a). UTC-safe. */
+function daysBetweenYmd(a: string, b: string): number {
+  const pa = a.slice(0, 10).split('-').map(Number);
+  const pb = b.slice(0, 10).split('-').map(Number);
+  const ta = Date.UTC(pa[0]!, pa[1]! - 1, pa[2]!);
+  const tb = Date.UTC(pb[0]!, pb[1]! - 1, pb[2]!);
+  return Math.round((tb - ta) / 86_400_000);
+}
+
 /** Add `days` to a YYYY-MM-DD string → {y,m,d}. */
 function shiftYmd(ymd: string, days: number) {
   const parts = ymd.slice(0, 10).split('-');
@@ -134,6 +158,19 @@ export function computeDueAt(trigger: string, ctx: DueContext): Date | null {
   const p = parseTrigger(trigger);
   if (!p) return null;
   if (p.kind === 'booking_created') return ctx.createdAt;
+
+  if (p.kind === 'lastminute') {
+    // Qualifies only if the booking was created within thresholdDays of
+    // check-in. Compare calendar dates in the property timezone: the booking's
+    // creation date vs the check-in date. If close enough, due = the creation
+    // instant → the dispatcher sends it on the next run (immediately, any
+    // clock time). Otherwise null → never fires (a normal advance booking is
+    // covered by the operator's scheduled template instead).
+    const createdYmd = utcToZonedYmd(ctx.createdAt, ctx.timeZone);
+    const daysUntilCheckin = daysBetweenYmd(createdYmd, ctx.checkin);
+    if (daysUntilCheckin < 0 || daysUntilCheckin > p.thresholdDays!) return null;
+    return ctx.createdAt;
+  }
 
   const base =
     p.anchor === 'reservation'
