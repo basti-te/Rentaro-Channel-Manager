@@ -317,12 +317,18 @@ function RateSourceSection({
       {value === 'pricelabs' && (
         <div className="mt-3 rounded-lg border border-brand/30 bg-brand-soft/40 px-3.5 py-2.5">
           <p className="text-[12px] text-ink leading-relaxed">
-            <span className="font-medium">PriceLabs verwaltet die Preise.</span>{' '}
-            Die Nachtpreise werden von PriceLabs direkt in Channex geschrieben
-            und im Kalender angezeigt. Preisänderungen in der Rentaro-Oberfläche
-            laufen ins Leere — passe Preise in PriceLabs an. Restriktionen
-            (Min-Aufenthalt, Stop-Sell) sowie die Verfügbarkeit kommen weiterhin
-            aus Rentaro.
+            <span className="font-medium">PriceLabs verwaltet Preis und
+            Aufenthaltsregeln.</span>{' '}
+            Nachtpreis, Mindestaufenthalt, Max-Aufenthalt und CTA/CTD werden von
+            PriceLabs direkt in Channex geschrieben und im Kalender angezeigt;
+            Änderungen daran in der Rentaro-Oberfläche laufen ins Leere — bitte
+            in PriceLabs anpassen. Bei Rentaro bleiben nur die Verfügbarkeit
+            (aus Buchungen/Blöcken) und Stop-Sell.
+            <br />
+            <span className="text-whisper">
+              Wichtig: Setze dafür in PriceLabs den Update-Typ auf „Price and
+              Restrictions" — sonst schreibt niemand die Mindestaufenthalte.
+            </span>
           </p>
         </div>
       )}

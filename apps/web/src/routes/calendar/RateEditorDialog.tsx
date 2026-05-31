@@ -124,10 +124,11 @@ export function RateEditorDialog({
       : `${format(range.firstNight, 'd. MMM', { locale: de })} – ${format(range.lastNight, 'd. MMM yyyy', { locale: de })} · ${range.nights} Tage`
     : 'Zeitraum wählen';
 
-  // In PriceLabs mode the rate field is inert — never read a typed rate.
+  // In PriceLabs mode the rate AND min-stay fields are inert (PriceLabs owns
+  // both) — never read typed values for them.
   const rateNum = pricelabsManaged || rate.trim() === '' ? null : Number(rate.replace(',', '.'));
   const rateValid = rateNum == null || (Number.isFinite(rateNum) && rateNum >= 0);
-  const minStayNum = minStay.trim() === '' ? null : Number(minStay);
+  const minStayNum = pricelabsManaged || minStay.trim() === '' ? null : Number(minStay);
   const minStayValid =
     minStayNum == null || (Number.isInteger(minStayNum) && minStayNum >= 1);
 
@@ -232,9 +233,11 @@ export function RateEditorDialog({
           {pricelabsManaged && (
             <div className="rounded-lg border border-brand/30 bg-brand-soft/40 px-3.5 py-2.5">
               <p className="text-[12px] text-ink leading-relaxed">
-                <span className="font-medium">PriceLabs verwaltet die Preise.</span>{' '}
-                Preisänderungen hier wirken nicht — bitte passe Preise in
-                PriceLabs an. Min-Aufenthalt und Stop-Sell bleiben hier aktiv.
+                <span className="font-medium">PriceLabs verwaltet Preis und
+                Aufenthaltsregeln.</span>{' '}
+                Änderungen an Preis und Mindestaufenthalt wirken hier nicht —
+                bitte in PriceLabs anpassen. Nur Stop-Sell (Komplettsperre)
+                bleibt hier aktiv.
               </p>
             </div>
           )}
@@ -258,9 +261,10 @@ export function RateEditorDialog({
                 id="ro-minstay"
                 type="number"
                 min={1}
-                placeholder="unverändert"
+                placeholder={pricelabsManaged ? 'von PriceLabs' : 'unverändert'}
                 value={minStay}
                 onChange={(e) => setMinStay(e.target.value)}
+                disabled={pricelabsManaged}
               />
             </div>
           </div>

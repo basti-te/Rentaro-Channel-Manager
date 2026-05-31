@@ -247,8 +247,12 @@ export async function resolveRateValues(
       );
     const byDay = new Map(overrides.map((o) => [o.date, o]));
 
-    // PriceLabs owns rates for this tenant — never emit a rate, but keep
-    // pushing PMS-owned restrictions (min/max stay, stop-sell, CTA/CTD).
+    // PriceLabs mode: PriceLabs owns the rate AND all stay restrictions
+    // (min-stay, max-stay, CTA/CTD) via its "Price and Restrictions" update
+    // type. Rentaro must NOT emit those fields or it would overwrite PriceLabs
+    // in Channex (two writers on one field = unpredictable). Rentaro still owns
+    // availability (separate /availability channel) and stop_sell (the manual
+    // full-block switch). Operator decision 2026-05-31.
     const pricelabs = m.rateSource === 'pricelabs';
 
     const effectiveAt = (day: string): DayRate => {
@@ -278,15 +282,32 @@ export async function resolveRateValues(
         rate_plan_id: m.channexRatePlanId,
         date_from: start,
         date_to: prevDayStr(endExclusive), // Channex date_to is inclusive
-        min_stay_arrival: d.minStay,
-        min_stay_through: d.minStay,
       };
       if (d.rate != null) entry.rate = d.rate;
-      if (d.maxStay != null) entry.max_stay = d.maxStay;
-      if (d.closedToArrival != null) entry.closed_to_arrival = d.closedToArrival;
-      if (d.closedToDeparture != null) entry.closed_to_departure = d.closedToDeparture;
+      // Stay restrictions are Rentaro-owned ONLY in PMS mode. In PriceLabs mode
+      // PriceLabs writes them, so emitting here would fight PriceLabs.
+      if (!pricelabs) {
+        entry.min_stay_arrival = d.minStay;
+        entry.min_stay_through = d.minStay;
+        if (d.maxStay != null) entry.max_stay = d.maxStay;
+        if (d.closedToArrival != null) entry.closed_to_arrival = d.closedToArrival;
+        if (d.closedToDeparture != null) entry.closed_to_departure = d.closedToDeparture;
+      }
+      // stop_sell stays Rentaro-owned in BOTH modes (manual full-block switch).
       if (d.stopSell != null) entry.stop_sell = d.stopSell;
-      out.push(entry);
+
+      // In PriceLabs mode an entry can end up carrying nothing (no rate, no
+      // stay restrictions, no stop_sell) — don't push empty no-ops to Channex.
+      if (
+        entry.rate != null ||
+        entry.min_stay_arrival != null ||
+        entry.max_stay != null ||
+        entry.closed_to_arrival != null ||
+        entry.closed_to_departure != null ||
+        entry.stop_sell != null
+      ) {
+        out.push(entry);
+      }
     };
 
     for (let cursor = addDayStr(r.from); cursor < r.to; cursor = addDayStr(cursor)) {
