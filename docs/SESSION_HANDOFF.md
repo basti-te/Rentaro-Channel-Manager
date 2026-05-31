@@ -127,13 +127,18 @@ The full OTA cutover is done and **verified against production Channex**:
 4. ✅ 2.817 bookings imported (`pnpm db:import-guesty`, tenant default).
 5. ✅ PriceLabs connected (ADR 0006 direct integration) and pushing **variable
    daily prices** into Channex — verified read-back showed 24–48 distinct
-   rates/apartment (not the old 350-flat default). PriceLabs update-type is
-   **Price only**.
-6. ✅ **Preis-Quelle = PriceLabs** (Settings toggle). Decision (2026-05-30):
-   **PriceLabs owns prices; Rentaro keeps min-stay / stop-sell / CTA-CTD +
-   availability.** Clean split, no two-writer conflict. (To revisit: would need
-   PriceLabs update-type "Price and Restrictions" AND suppressing min_stay/CTA
-   in the ARI flusher — deliberately NOT done.)
+   rates/apartment (not the old 350-flat default). ⚠️ PriceLabs update-type
+   must now be **"Price and Restrictions"** (see point 6).
+6. ✅ **Preis-Quelle = PriceLabs** (Settings toggle). Decision **REVISED
+   2026-05-31** (commit `0df9f31`): **PriceLabs owns price AND all stay
+   restrictions** (min-stay, max-stay, CTA/CTD). Rentaro keeps ONLY
+   availability + stop_sell. The ARI flusher (`ari-resolve.ts`
+   `resolveRateValues`) now suppresses all stay-restriction fields in
+   pricelabs mode and skips empty no-op entries; the rate editor locks the
+   min-stay field (not just rate). ⚠️ **Operator must set PriceLabs
+   update-type to "Price and Restrictions"** — otherwise nobody writes
+   min-stay (no double-booking risk: availability stays with Rentaro).
+   (Supersedes the 2026-05-30 "Rentaro keeps min-stay" split.)
 7. ✅ Full Sync run for all apartments — availability now in Channex; verified
    Channex blocked-days ≥ DB booked-nights for all 16.
 
