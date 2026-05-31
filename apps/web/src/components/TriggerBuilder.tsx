@@ -76,14 +76,18 @@ export function buildTriggerDsl(p: TriggerParts): string {
     const t = Math.max(1, Math.min(90, p.thresholdDays || DEFAULTS.thresholdDays));
     return `lastminute:${t}d`;
   }
-  if (p.rel === 'on') return `${p.anchor}:+0d@${p.time}`;
-  const sign = p.rel === 'before' ? '-' : '+';
-  let dsl = `${p.anchor}:${sign}${p.days}d@${p.time}`;
-  // Min-lead guard only makes sense for "X days before check-in".
-  if (p.anchor === 'checkin' && p.rel === 'before' && p.minLeadDays && p.minLeadDays >= 1) {
-    dsl += `~minlead=${Math.min(90, Math.round(p.minLeadDays))}d`;
+  const core =
+    p.rel === 'on'
+      ? `${p.anchor}:+0d@${p.time}`
+      : `${p.anchor}:${p.rel === 'before' ? '-' : '+'}${p.days}d@${p.time}`;
+  // Min-lead guard works for ANY anchored trigger — the engine compares the
+  // booking-creation date to check-in regardless of anchor. Used to suppress a
+  // message for bookings made too close to check-in (e.g. the confirmation or
+  // the normal check-in shouldn't fire late on a last-minute booking).
+  if (p.minLeadDays && p.minLeadDays >= 1) {
+    return `${core}~minlead=${Math.min(90, Math.round(p.minLeadDays))}d`;
   }
-  return dsl;
+  return core;
 }
 
 export function parseTriggerDsl(s: string): TriggerParts {
@@ -239,8 +243,10 @@ export function TriggerBuilder({
             Uhrzeit in lokaler Zeit des Apartments.
           </p>
 
-          {/* Min-lead guard — only meaningful for "X days before check-in". */}
-          {anchor === 'checkin' && rel === 'before' && (
+          {/* Min-lead guard — suppress for bookings made too close to check-in.
+              Useful for the confirmation (reservation) and the normal check-in,
+              so neither fires late on a last-minute booking. */}
+          {(anchor === 'checkin' || anchor === 'reservation') && (
             <label className="flex items-start gap-2 pt-1">
               <input
                 type="checkbox"
