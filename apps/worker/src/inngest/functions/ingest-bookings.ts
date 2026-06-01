@@ -42,7 +42,14 @@ function unionRange(
  * runs and timings.
  */
 export const ingestBookings = inngest.createFunction(
-  { id: 'ingest-channex-bookings', name: 'Pull bookings from Channex feed', retries: 3 },
+  {
+    id: 'ingest-channex-bookings',
+    name: 'Pull bookings from Channex feed',
+    retries: 3,
+    // Serialize feed drains so a webhook and the safety-net cron can't
+    // double-process / double-ack the same revisions concurrently.
+    concurrency: { limit: 1 },
+  },
   { event: 'channex/booking.ingest' },
   async ({ event, step, logger }) => {
     const db = createDb(env.DATABASE_URL);
@@ -83,6 +90,11 @@ export const ingestBookings = inngest.createFunction(
         break;
       }
 
+      // Acks made in this batch. If a batch acks nothing (everything left
+      // unacked for the operator to map), re-fetching returns the identical
+      // set — so we stop instead of spinning MAX_BATCHES times.
+      let ackedThisBatch = 0;
+
       // ── Process each revision ───────────────────────────────────────
       for (const rev of revisions) {
         const result = await step.run(`upsert-${rev.id}`, async () => {
@@ -101,7 +113,27 @@ export const ingestBookings = inngest.createFunction(
             attributes: rev.attributes,
           };
 
-          const row = mapChannexBooking(booking, rev.id);
+          let row: ReturnType<typeof mapChannexBooking>;
+          try {
+            row = mapChannexBooking(booking, rev.id);
+          } catch (err) {
+            // A revision we can't turn into a stored booking — e.g. a
+            // cancellation that arrives with null arrival/departure dates.
+            // NEVER rethrow: a throw here fails the whole run and blocks every
+            // revision behind it in the feed (head-of-line — the 2026-06-01
+            // incident). If it cancels a booking we already hold, cancel it.
+            if (rev.attributes.status === 'cancelled') {
+              await db
+                .update(bookings)
+                .set({ status: 'cancelled', lastSyncAt: new Date(), updatedAt: new Date() })
+                .where(eq(bookings.channexBookingId, bookingId));
+              return { skipped: true, reason: 'cancel_without_dates' } as const;
+            }
+            return {
+              skipped: true,
+              reason: `map_error:${err instanceof Error ? err.message : String(err)}`,
+            } as const;
+          }
           if (!row.channexPropertyId) {
             return { skipped: true, reason: 'no_channex_property_id' } as const;
           }
@@ -344,6 +376,7 @@ export const ingestBookings = inngest.createFunction(
           await step.run(`ack-${rev.id}`, async () => {
             await channex.bookings.feed.ack(rev.id);
           });
+          ackedThisBatch++;
           // Operator notification — its own durable step so a mail hiccup
           // never re-runs the upsert/ack. notifyBookingEvent never throws.
           const kind = result.notifyKind;
@@ -369,13 +402,27 @@ export const ingestBookings = inngest.createFunction(
             { revisionId: rev.id, reason: result.reason },
             'Channex revision skipped',
           );
-          // Skip = ack anyway. Otherwise we'd loop forever on a row we
-          // can't map. (Could revisit if we want to wait for the mapping.)
-          await step.run(`ack-skipped-${rev.id}`, async () => {
-            await channex.bookings.feed.ack(rev.id);
-          });
+          // FIXABLE mapping gaps (apartment not mapped yet / no internal
+          // property) are left UNACKED so the booking is NOT silently lost:
+          // once the operator maps the apartment, the safety-net cron re-drains
+          // it, and Channex's own "unacked" reminder surfaces it. Everything
+          // else (can-never-process: no booking_id, no property_id in payload,
+          // map error, dateless cancellation) is acked so the feed can't wedge.
+          const fixable =
+            result.reason === 'channex_property_not_mapped' ||
+            result.reason === 'no_internal_property';
+          if (!fixable) {
+            await step.run(`ack-skipped-${rev.id}`, async () => {
+              await channex.bookings.feed.ack(rev.id);
+            });
+            ackedThisBatch++;
+          }
         }
       }
+
+      // Nothing acked this batch → only unmappable revisions remain; the next
+      // fetch would return the same set. Stop; the cron retries later.
+      if (ackedThisBatch === 0) break;
 
       if (revisions.length < FEED_BATCH_SIZE) {
         // Last batch — feed is drained
@@ -403,5 +450,28 @@ export const ingestBookings = inngest.createFunction(
       'Channex feed ingest complete.',
     );
     return { processed: totalProcessed, skipped: totalSkipped, availabilityRanges: ariChanges.length };
+  },
+);
+
+/**
+ * Safety-net: pull the booking feed every 5 minutes regardless of webhooks.
+ * Webhooks are the primary trigger, but Channex's own docs warn they can be
+ * missed or arrive out of order — without this, a missed/failed webhook means
+ * a booking is never ingested until some later unrelated webhook fires (the
+ * 2026-06-01 incident). Re-uses the same idempotent, concurrency-limited
+ * ingest function via its event, so this is just a periodic nudge.
+ */
+export const ingestBookingsCron = inngest.createFunction(
+  { id: 'ingest-channex-bookings-cron', name: 'Booking feed safety-net drain', retries: 1 },
+  { cron: '*/5 * * * *' },
+  async ({ step }) => {
+    await step.run('kick-ingest', async () => {
+      await inngest.send({
+        name: 'channex/booking.ingest',
+        data: { reason: 'cron.safety' },
+      });
+      return { sent: true };
+    });
+    return { triggered: true };
   },
 );

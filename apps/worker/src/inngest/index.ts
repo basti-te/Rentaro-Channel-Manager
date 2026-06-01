@@ -2,7 +2,7 @@ export { inngest } from './client';
 export type { Events } from './events';
 
 import { ariFlush, ariFlushCron } from './functions/ari-flush';
-import { ingestBookings } from './functions/ingest-bookings';
+import { ingestBookings, ingestBookingsCron } from './functions/ingest-bookings';
 import { messagesDispatch } from './functions/messages-dispatch';
 import { cleaningDispatch } from './functions/cleaning-dispatch';
 import { stripeEvent } from './functions/stripe-event';
@@ -23,6 +23,7 @@ export const inngestFunctions = [
   ariFlush,
   ariFlushCron,
   ingestBookings,
+  ingestBookingsCron,
   messagesDispatch,
   cleaningDispatch,
   stripeEvent,
