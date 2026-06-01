@@ -477,6 +477,13 @@ function MessagesSection({ bookingId }: { bookingId: string }) {
     onSuccess: () => utils.messages.timelineForBooking.invalidate({ bookingId }),
     onError: (e) => toast.error(e.message),
   });
+  const sendNow = trpc.messages.sendNow.useMutation({
+    onSuccess: () => {
+      utils.messages.timelineForBooking.invalidate({ bookingId });
+      toast.success('Nachricht an den Gast gesendet.');
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   return (
     <Section icon={<MessageSquare className="h-4 w-4" />} label="Nachrichten">
@@ -560,6 +567,39 @@ function MessagesSection({ bookingId }: { bookingId: string }) {
                               · Override · auf Apartment-Standard
                             </button>
                           )}
+                          {/* Manual send — works for any template-backed,
+                              sendable channel; re-send asks for confirmation. */}
+                          {i.templateId &&
+                            i.channel !== 'email' &&
+                            i.status !== 'queued' &&
+                            i.status !== 'sending' && (
+                              <button
+                                type="button"
+                                className="text-brand hover:underline disabled:opacity-50"
+                                disabled={sendNow.isPending}
+                                onClick={() => {
+                                  const alreadySent =
+                                    i.status === 'sent' || i.status === 'delivered';
+                                  if (
+                                    alreadySent &&
+                                    !window.confirm(
+                                      'Diese Nachricht wurde bereits gesendet. Erneut an den Gast senden?',
+                                    )
+                                  )
+                                    return;
+                                  sendNow.mutate({
+                                    bookingId,
+                                    templateId: i.templateId!,
+                                    force: alreadySent,
+                                  });
+                                }}
+                              >
+                                ·{' '}
+                                {i.status === 'sent' || i.status === 'delivered'
+                                  ? 'Erneut senden'
+                                  : 'Jetzt senden'}
+                              </button>
+                            )}
                         </div>
                         {i.error && (
                           <div className="text-[11px] text-danger mt-1 num">

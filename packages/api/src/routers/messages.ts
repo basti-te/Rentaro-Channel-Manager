@@ -17,6 +17,7 @@ import { dispatchDisposition } from '../services/triggers';
 import { buildBookingVars, renderTemplate } from '../services/templates';
 import { isTemplateEnabledForBooking } from '../services/scope';
 import { resolveCustomVars } from '../services/custom-vars';
+import { sendSms } from '../services/twilio';
 
 /**
  * Channex iframe path for the guest-messaging screen. The mapping iframe
@@ -381,6 +382,196 @@ export const messagesRouter = router({
           set: { enabled: input.enabled, updatedAt: new Date() },
         });
       return { enabled: input.enabled };
+    }),
+
+  /**
+   * Manually send ONE template's message to the guest right now (the booking
+   * detail's "Jetzt senden" action). Renders with the booking's variables and
+   * sends via the template's channel (SMS → Twilio, Airbnb/Booking.com →
+   * Channex thread). Records/updates the `messages` row so the timeline shows
+   * the result. Refuses to re-send an already-sent message unless `force`.
+   */
+  sendNow: editorProcedure
+    .input(
+      z.object({
+        bookingId: z.string().uuid(),
+        templateId: z.string().uuid(),
+        /** Re-send even if a sent/delivered row already exists. */
+        force: z.boolean().default(false),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Booking (tenant-scoped) + the fields needed to render & address it.
+      const bk = (
+        await ctx.db
+          .select({
+            propertyId: bookings.propertyId,
+            guestName: bookings.guestName,
+            guestPhone: bookings.guestPhone,
+            checkin: bookings.checkin,
+            checkout: bookings.checkout,
+            checkinTime: bookings.checkinTime,
+            checkoutTime: bookings.checkoutTime,
+            guestCount: bookings.guestCount,
+            otaConfirmationCode: bookings.otaConfirmationCode,
+            channexBookingId: bookings.channexBookingId,
+            propertyName: properties.name,
+          })
+          .from(bookings)
+          .innerJoin(properties, eq(properties.id, bookings.propertyId))
+          .where(and(eq(bookings.id, input.bookingId), eq(bookings.tenantId, ctx.tenantId!)))
+          .limit(1)
+      )[0];
+      if (!bk) throw new TRPCError({ code: 'NOT_FOUND' });
+
+      const tpl = (
+        await ctx.db
+          .select({ channel: messageTemplates.channel, body: messageTemplates.body })
+          .from(messageTemplates)
+          .where(
+            and(
+              eq(messageTemplates.id, input.templateId),
+              eq(messageTemplates.tenantId, ctx.tenantId!),
+            ),
+          )
+          .limit(1)
+      )[0];
+      if (!tpl) throw new TRPCError({ code: 'NOT_FOUND' });
+
+      // Don't silently double-message a guest.
+      const existing = (
+        await ctx.db
+          .select({ status: messages.status })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.bookingId, input.bookingId),
+              eq(messages.templateId, input.templateId),
+            ),
+          )
+          .limit(1)
+      )[0];
+      if (
+        existing &&
+        (existing.status === 'sent' || existing.status === 'delivered') &&
+        !input.force
+      ) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Nachricht wurde bereits gesendet.' });
+      }
+
+      // Render with the booking's variables (built-ins + tenant custom vars).
+      const vars = buildBookingVars({
+        guestName: bk.guestName,
+        checkin: bk.checkin,
+        checkout: bk.checkout,
+        checkinTime: bk.checkinTime,
+        checkoutTime: bk.checkoutTime,
+        guestCount: bk.guestCount,
+        otaConfirmationCode: bk.otaConfirmationCode,
+        propertyName: bk.propertyName,
+      });
+      Object.assign(vars, await resolveCustomVars(ctx.db, ctx.tenantId!, bk.propertyId));
+      const body = renderTemplate(tpl.body, vars);
+
+      // Send via the template's channel (mirrors the worker dispatcher's sendOne).
+      let result: { ok: true; externalId: string | null } | { ok: false; error: string };
+      let toAddress: string | null = null;
+      let fromAddress: string | null = null;
+      if (tpl.channel === 'sms') {
+        if (!bk.guestPhone) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Keine Telefonnummer für diese Buchung.' });
+        }
+        const tenantRow = (
+          await ctx.db
+            .select({ smsSenderId: tenants.smsSenderId })
+            .from(tenants)
+            .where(eq(tenants.id, ctx.tenantId!))
+            .limit(1)
+        )[0];
+        const from = tenantRow?.smsSenderId || ctx.env.TWILIO_FROM;
+        const r = await sendSms(
+          { accountSid: ctx.env.TWILIO_ACCOUNT_SID, authToken: ctx.env.TWILIO_AUTH_TOKEN, from },
+          bk.guestPhone,
+          body,
+        );
+        toAddress = bk.guestPhone;
+        fromAddress = from ?? null;
+        result = r.ok
+          ? { ok: true, externalId: r.sid }
+          : {
+              ok: false,
+              error: r.reason === 'not_configured' ? 'Twilio ist nicht konfiguriert.' : r.message,
+            };
+      } else if (tpl.channel === 'airbnb' || tpl.channel === 'booking_com') {
+        if (!bk.channexBookingId) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Keine Channex-Buchung verknüpft — OTA-Nachricht nicht möglich.',
+          });
+        }
+        toAddress = bk.channexBookingId;
+        try {
+          const channex = createChannexClient({
+            baseUrl: ctx.env.CHANNEX_API_URL,
+            apiKey: ctx.env.CHANNEX_API_KEY,
+          });
+          await channex.bookings.sendMessage(bk.channexBookingId, body);
+          result = { ok: true, externalId: null };
+        } catch (err) {
+          result = {
+            ok: false,
+            error:
+              err instanceof ChannexError
+                ? `Channex ${err.status ?? '?'}: ${err.message}`
+                : err instanceof Error
+                  ? err.message
+                  : String(err),
+          };
+        }
+      } else {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Kanal "${tpl.channel}" unterstützt keinen direkten Versand.`,
+        });
+      }
+
+      // Record/overwrite the row so the timeline reflects the manual send.
+      const now = new Date();
+      await ctx.db
+        .insert(messages)
+        .values({
+          tenantId: ctx.tenantId!,
+          bookingId: input.bookingId,
+          templateId: input.templateId,
+          channel: tpl.channel,
+          direction: 'outbound',
+          body,
+          status: result.ok ? 'sent' : 'failed',
+          scheduledAt: now,
+          sentAt: result.ok ? now : null,
+          externalId: result.ok ? result.externalId : null,
+          toAddress,
+          fromAddress,
+          error: result.ok ? null : result.error,
+        })
+        .onConflictDoUpdate({
+          target: [messages.bookingId, messages.templateId],
+          set: {
+            channel: tpl.channel,
+            body,
+            status: result.ok ? 'sent' : 'failed',
+            sentAt: result.ok ? now : null,
+            externalId: result.ok ? result.externalId : null,
+            toAddress,
+            fromAddress,
+            error: result.ok ? null : result.error,
+          },
+        });
+
+      if (!result.ok) {
+        throw new TRPCError({ code: 'BAD_GATEWAY', message: `Versand fehlgeschlagen: ${result.error}` });
+      }
+      return { sent: true as const, channel: tpl.channel };
     }),
 
   /**
