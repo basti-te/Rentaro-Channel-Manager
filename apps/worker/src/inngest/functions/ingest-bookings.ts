@@ -1,5 +1,5 @@
-import { and, eq, isNull, ne, sql } from 'drizzle-orm';
-import { bookings, channexProperties, createDb } from '@cm/db';
+import { and, eq, isNull, ne, or, sql } from 'drizzle-orm';
+import { bookings, channexProperties, properties, createDb } from '@cm/db';
 import { createChannexClient, ChannexError, type Booking as ChannexBooking } from '@cm/channex';
 import { notifyBookingEvent, enqueueAri, type AriChange, type EmailConfig } from '@cm/api';
 import { env } from '../../env';
@@ -107,6 +107,67 @@ export const ingestBookings = inngest.createFunction(
             return { skipped: true, reason: 'missing_booking_id' } as const;
           }
 
+          // ── Cancellations handled up front ─────────────────────────────
+          // A cancellation can carry NULL dates (the mapper would throw) and
+          // can target an IMPORTED row whose channex_booking_id is still NULL —
+          // so it must be matched by the OTA confirmation code, not only the
+          // Channex booking id. Cancel every active row for the reservation and
+          // free its nights. (2026-06-01 incident: the import's cancellation
+          // never landed because we matched on channex_booking_id alone.)
+          if (rev.attributes.status === 'cancelled') {
+            const otaCode =
+              rev.attributes.ota_reservation_code ?? rev.attributes.unique_id ?? null;
+            const idMatch = otaCode
+              ? or(
+                  eq(bookings.channexBookingId, bookingId),
+                  eq(bookings.otaConfirmationCode, otaCode),
+                )
+              : eq(bookings.channexBookingId, bookingId);
+            const target = (
+              await db
+                .select({
+                  tenantId: bookings.tenantId,
+                  propertyId: bookings.propertyId,
+                  propName: properties.name,
+                  checkin: bookings.checkin,
+                  checkout: bookings.checkout,
+                  guestName: bookings.guestName,
+                  otaName: bookings.otaName,
+                  otaConfirmationCode: bookings.otaConfirmationCode,
+                })
+                .from(bookings)
+                .leftJoin(properties, eq(properties.id, bookings.propertyId))
+                .where(and(idMatch, ne(bookings.status, 'cancelled')))
+                .limit(1)
+            )[0];
+            if (!target) {
+              // Nothing active to cancel (never held it, or already cancelled).
+              return { skipped: true, reason: 'cancel_no_target' } as const;
+            }
+            // Cancel ALL active rows for this reservation (handles a legacy
+            // import+feed duplicate), then free the nights.
+            await db
+              .update(bookings)
+              .set({ status: 'cancelled', channexRevisionId: rev.id, lastSyncAt: new Date(), updatedAt: new Date() })
+              .where(and(idMatch, ne(bookings.status, 'cancelled')));
+            return {
+              ok: true,
+              tenantId: target.tenantId,
+              propertyId: target.propertyId,
+              notifyKind: 'cancellation' as const,
+              enqueueAvailability: true,
+              range: { from: target.checkin, to: target.checkout },
+              booking: {
+                apartmentName: target.propName ?? '—',
+                guestName: target.guestName,
+                checkin: target.checkin,
+                checkout: target.checkout,
+                otaName: target.otaName,
+                otaConfirmationCode: target.otaConfirmationCode,
+              },
+            } as const;
+          }
+
           const booking: ChannexBooking = {
             id: bookingId,
             type: 'booking',
@@ -117,18 +178,10 @@ export const ingestBookings = inngest.createFunction(
           try {
             row = mapChannexBooking(booking, rev.id);
           } catch (err) {
-            // A revision we can't turn into a stored booking — e.g. a
-            // cancellation that arrives with null arrival/departure dates.
             // NEVER rethrow: a throw here fails the whole run and blocks every
             // revision behind it in the feed (head-of-line — the 2026-06-01
-            // incident). If it cancels a booking we already hold, cancel it.
-            if (rev.attributes.status === 'cancelled') {
-              await db
-                .update(bookings)
-                .set({ status: 'cancelled', lastSyncAt: new Date(), updatedAt: new Date() })
-                .where(eq(bookings.channexBookingId, bookingId));
-              return { skipped: true, reason: 'cancel_without_dates' } as const;
-            }
+            // incident). Cancellations are handled above; a non-cancel revision
+            // we can't map (e.g. missing dates) is skipped + acked.
             return {
               skipped: true,
               reason: `map_error:${err instanceof Error ? err.message : String(err)}`,
