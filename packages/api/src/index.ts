@@ -98,3 +98,8 @@ export {
   reconcileQuantity,
 } from './services/stripe';
 export { resolveAccess } from './services/plan-guard';
+
+// ARI outbox enqueue — reused by the worker's booking-feed ingest so an
+// inbound OTA booking/cancellation pushes availability to Channex immediately
+// (same path the internal booking mutations use).
+export { enqueueAri, type AriChange, type AriKind } from './services/ari';

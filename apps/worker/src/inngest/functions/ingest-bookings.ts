@@ -1,13 +1,26 @@
 import { eq, sql } from 'drizzle-orm';
 import { bookings, channexProperties, createDb } from '@cm/db';
 import { createChannexClient, ChannexError, type Booking as ChannexBooking } from '@cm/channex';
-import { notifyBookingEvent, type EmailConfig } from '@cm/api';
+import { notifyBookingEvent, enqueueAri, type AriChange, type EmailConfig } from '@cm/api';
 import { env } from '../../env';
 import { inngest } from '../client';
 import { mapChannexBooking } from './channex-booking-mapper';
 
 const FEED_BATCH_SIZE = 50;
 const MAX_BATCHES = 5; // safety: ≤ 250 revisions per run
+
+/** Smallest [from,to) window covering every given range (from inclusive, to exclusive). */
+function unionRange(
+  ...pairs: Array<{ from: string; to: string }>
+): { from: string; to: string } {
+  let from = pairs[0]!.from;
+  let to = pairs[0]!.to;
+  for (const p of pairs.slice(1)) {
+    if (p.from < from) from = p.from;
+    if (p.to > to) to = p.to;
+  }
+  return { from, to };
+}
 
 /**
  * Pull unacknowledged Channex booking revisions and persist them.
@@ -49,6 +62,9 @@ export const ingestBookings = inngest.createFunction(
     let totalProcessed = 0;
     let totalSkipped = 0;
     const tenantsTouched = new Set<string>();
+    // Availability re-sync windows collected across all revisions, flushed in
+    // ONE enqueue at the end (one ari_pending batch insert + one `ari/changed`).
+    const ariChanges: AriChange[] = [];
 
     for (let batchNo = 0; batchNo < MAX_BATCHES; batchNo++) {
       // ── Fetch a batch ───────────────────────────────────────────────
@@ -128,6 +144,8 @@ export const ingestBookings = inngest.createFunction(
               .select({
                 status: bookings.status,
                 channexRevisionId: bookings.channexRevisionId,
+                checkin: bookings.checkin,
+                checkout: bookings.checkout,
               })
               .from(bookings)
               .where(eq(bookings.channexBookingId, row.channexBookingId))
@@ -207,10 +225,27 @@ export const ingestBookings = inngest.createFunction(
               },
             });
 
+          // Availability re-sync window: the booked nights, unioned with the
+          // PREVIOUS dates on a modification so a shortened stay re-opens the
+          // freed nights too. The flusher recomputes occupancy from all active
+          // bookings, so this is safe even when ranges overlap other stays.
+          const range = existing
+            ? unionRange(
+                { from: row.checkin, to: row.checkout },
+                { from: existing.checkin, to: existing.checkout },
+              )
+            : { from: row.checkin, to: row.checkout };
+
           return {
             ok: true,
             tenantId: mapping.tenantId,
+            propertyId: internalProperty.id,
             notifyKind,
+            // Skip the availability push only for an idempotent same-revision
+            // re-delivery (nothing changed). New / modified / cancelled all
+            // need Channex's availability re-pushed.
+            enqueueAvailability: !sameRevision,
+            range,
             booking: {
               apartmentName: internalProperty.name,
               guestName: row.guestName,
@@ -225,6 +260,20 @@ export const ingestBookings = inngest.createFunction(
         if ('ok' in result) {
           totalProcessed++;
           tenantsTouched.add(result.tenantId);
+          // Queue the availability re-push for this booking's nights. THIS is
+          // what was missing: without it an inbound OTA booking only blocked
+          // the other channels on the next manual Full Sync (the cron is
+          // delta-only and had no pending row to drain).
+          if (result.enqueueAvailability) {
+            ariChanges.push({
+              tenantId: result.tenantId,
+              propertyId: result.propertyId,
+              kinds: ['availability'],
+              from: result.range.from,
+              to: result.range.to,
+              reason: `ota.${result.notifyKind ?? 'resync'}`,
+            });
+          }
           // Ack only after a successful upsert
           await step.run(`ack-${rev.id}`, async () => {
             await channex.bookings.feed.ack(rev.id);
@@ -268,10 +317,25 @@ export const ingestBookings = inngest.createFunction(
       }
     }
 
+    // Push availability for every booked/changed range in one batched enqueue.
+    // The global flusher (debounced 8s, throttled) coalesces it into ~1 Channex
+    // /availability call regardless of how many bookings arrived.
+    if (ariChanges.length > 0) {
+      await step.run('enqueue-availability', async () => {
+        await enqueueAri({ db, inngest }, ariChanges);
+        return { enqueued: ariChanges.length };
+      });
+    }
+
     logger.info(
-      { processed: totalProcessed, skipped: totalSkipped, tenants: tenantsTouched.size },
+      {
+        processed: totalProcessed,
+        skipped: totalSkipped,
+        tenants: tenantsTouched.size,
+        availabilityRanges: ariChanges.length,
+      },
       'Channex feed ingest complete.',
     );
-    return { processed: totalProcessed, skipped: totalSkipped };
+    return { processed: totalProcessed, skipped: totalSkipped, availabilityRanges: ariChanges.length };
   },
 );
