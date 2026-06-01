@@ -24,6 +24,7 @@ import { SettingsPage } from './routes/settings';
 import { NotificationsPage } from './routes/notifications';
 import { TeammatesPage } from './routes/teammates';
 import { ReviewsPage } from './routes/reviews';
+import { ListingLinksPage } from './routes/listing-links';
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -151,6 +152,12 @@ const reviewsRoute = createRoute({
   component: ReviewsPage,
 });
 
+const listingLinksRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/listing-links',
+  component: ListingLinksPage,
+});
+
 const routeTree = rootRoute.addChildren([
   landingRoute,
   loginRoute,
@@ -170,6 +177,7 @@ const routeTree = rootRoute.addChildren([
     notificationsRoute,
     teammatesRoute,
     reviewsRoute,
+    listingLinksRoute,
   ]),
 ]);
 

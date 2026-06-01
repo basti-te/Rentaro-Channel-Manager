@@ -136,6 +136,38 @@ export const propertiesRouter = router({
       return row;
     }),
 
+  /**
+   * Set or clear the public OTA listing URLs shown on the Listing-Links page.
+   * Pass a URL to set, `null` to clear, or omit a field to leave it unchanged.
+   */
+  setListingLinks: editorProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        airbnbListingUrl: z.string().trim().url().max(2000).nullable().optional(),
+        bookingListingUrl: z.string().trim().url().max(2000).nullable().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const patch: {
+        airbnbListingUrl?: string | null;
+        bookingListingUrl?: string | null;
+        updatedAt: Date;
+      } = { updatedAt: new Date() };
+      if (input.airbnbListingUrl !== undefined) patch.airbnbListingUrl = input.airbnbListingUrl;
+      if (input.bookingListingUrl !== undefined) patch.bookingListingUrl = input.bookingListingUrl;
+      if (Object.keys(patch).length === 1) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nichts zu ändern' });
+      }
+      const [row] = await ctx.db
+        .update(properties)
+        .set(patch)
+        .where(and(eq(properties.id, input.id), eq(properties.tenantId, ctx.tenantId!)))
+        .returning();
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
+      return row;
+    }),
+
   delete: editorProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {

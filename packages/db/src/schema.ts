@@ -347,6 +347,11 @@ export const properties = pgTable(
     /** Default cleaning fee (per booking), incl. VAT. */
     defaultCleaningFeeCents: bigint('default_cleaning_fee_cents', { mode: 'bigint' }),
 
+    /** Public OTA listing URLs (operator-entered) — surfaced on the
+     *  "Listing-Links" page to copy & share (e.g. via WhatsApp). NULL = unset. */
+    airbnbListingUrl: text('airbnb_listing_url'),
+    bookingListingUrl: text('booking_listing_url'),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

@@ -148,6 +148,13 @@
       "when": 1780139749769,
       "tag": "0020_aspiring_black_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1780334655466,
+      "tag": "0021_soft_thing",
+      "breakpoints": true
     }
   ]
 }
