@@ -28,7 +28,7 @@ import { createChannexClient, ChannexError } from '@cm/channex';
 import {
   buildBookingVars,
   renderTemplate,
-  computeDueAt,
+  dispatchDisposition,
   sendSms,
   isTemplateEnabledForBooking,
   resolveCustomVars,
@@ -36,8 +36,6 @@ import {
 import { env } from '../../env';
 import { inngest } from '../client';
 
-/** Don't send a trigger whose due time is older than this (avoid backfill spam). */
-const GRACE_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
 const ACTIVE_STATUSES = ['confirmed', 'synced', 'pending_sync'] as const;
 const MAX_PER_RUN = 200;
 
@@ -161,15 +159,19 @@ async function dispatch(): Promise<DispatchResult> {
         })
       )
         continue;
-      const dueAt = computeDueAt(t.trigger, {
-        checkin: b.checkin,
-        checkout: b.checkout,
-        createdAt: b.createdAt,
-        timeZone: t.tz,
-      });
-      if (!dueAt) continue;
-      if (dueAt > now) continue; // not yet
-      if (dueAt.getTime() < now.getTime() - GRACE_MS) continue; // too old
+      // Same decision (incl. the 2-day grace) the booking-detail timeline shows,
+      // so the UI label always matches what actually happens here.
+      const { due: dueAt, disposition } = dispatchDisposition(
+        t.trigger,
+        {
+          checkin: b.checkin,
+          checkout: b.checkout,
+          createdAt: b.createdAt,
+          timeZone: t.tz,
+        },
+        now.getTime(),
+      );
+      if (!dueAt || disposition !== 'due') continue;
 
       const baseVars = buildBookingVars({
         guestName: b.guestName,

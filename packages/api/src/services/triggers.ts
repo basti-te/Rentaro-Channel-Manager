@@ -201,3 +201,37 @@ export function computeDueAt(trigger: string, ctx: DueContext): Date | null {
   const { year, month1, day } = shiftYmd(base, p.dayOffset!);
   return zonedWallTimeToUtc(year, month1, day, p.hour!, p.minute!, ctx.timeZone);
 }
+
+/**
+ * How long after a trigger's due time the dispatcher will still send it.
+ * Older than this counts as backfill and is skipped (so importing old bookings
+ * doesn't spam guests with stale confirmations). SINGLE SOURCE OF TRUTH shared
+ * by the worker dispatcher and the booking-detail timeline, so the UI label
+ * always matches what the dispatcher will actually do.
+ */
+export const DISPATCH_GRACE_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+
+export type DispatchDisposition =
+  | 'future' // due later → will send automatically when its time comes
+  | 'due' // due within the grace window → the next dispatch run sends it
+  | 'overdue' // due longer ago than the grace window → will NOT auto-send
+  | 'never'; // no due time (e.g. a last-minute trigger that didn't qualify)
+
+/**
+ * The dispatcher's decision for one (trigger, booking) at instant `nowMs`,
+ * with the resolved due time. The worker uses it to decide whether to send;
+ * the UI uses it to label a not-yet-sent message honestly (planned / about to
+ * send / overdue-needs-manual / not-applicable).
+ */
+export function dispatchDisposition(
+  trigger: string,
+  ctx: DueContext,
+  nowMs: number,
+): { due: Date | null; disposition: DispatchDisposition } {
+  const due = computeDueAt(trigger, ctx);
+  if (!due) return { due: null, disposition: 'never' };
+  const t = due.getTime();
+  if (t > nowMs) return { due, disposition: 'future' };
+  if (t < nowMs - DISPATCH_GRACE_MS) return { due, disposition: 'overdue' };
+  return { due, disposition: 'due' };
+}

@@ -56,8 +56,11 @@ export {
 export {
   computeDueAt,
   parseTrigger,
+  dispatchDisposition,
+  DISPATCH_GRACE_MS,
   type ParsedTrigger,
   type TriggerAnchor,
+  type DispatchDisposition,
 } from './services/triggers';
 export { sendSms, isTwilioConfigured, type TwilioConfig } from './services/twilio';
 export {

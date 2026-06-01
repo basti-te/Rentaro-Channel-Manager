@@ -442,26 +442,32 @@ const MSG_CHANNEL_LABEL: Record<string, string> = {
 
 const MSG_STATUS_META: Record<
   string,
-  { label: string; group: 'sent' | 'planned' | 'failed' | 'off'; cls: string }
+  { label: string; group: 'sent' | 'planned' | 'failed' | 'off' | 'attention'; cls: string }
 > = {
   delivered: { label: 'Zugestellt', group: 'sent', cls: 'text-positive' },
   sent: { label: 'Gesendet', group: 'sent', cls: 'text-positive' },
   sending: { label: 'Wird gesendet', group: 'planned', cls: 'text-warning' },
   queued: { label: 'In Warteschlange', group: 'planned', cls: 'text-warning' },
-  pending: { label: 'Fällig', group: 'planned', cls: 'text-warning' },
+  // Due within the 2-day grace window → the next dispatch run sends it.
+  pending: { label: 'Sendet in Kürze', group: 'planned', cls: 'text-warning' },
   planned: { label: 'Geplant', group: 'planned', cls: 'text-muted' },
+  // Due longer ago than the grace window → will NOT auto-send; needs a manual send.
+  overdue: { label: 'Überfällig – manuell senden', group: 'attention', cls: 'text-warning' },
+  // No due time for this booking (e.g. a last-minute trigger that didn't qualify).
+  skipped: { label: 'Nicht zutreffend', group: 'off', cls: 'text-muted' },
   failed: { label: 'Fehlgeschlagen', group: 'failed', cls: 'text-danger' },
   off: { label: 'Aus', group: 'off', cls: 'text-muted' },
 };
 
 const MSG_GROUP_ORDER: Array<{
-  key: 'sent' | 'planned' | 'failed' | 'off';
+  key: 'sent' | 'planned' | 'failed' | 'off' | 'attention';
   label: string;
 }> = [
+  { key: 'attention', label: 'Aktion nötig' },
   { key: 'planned', label: 'Geplant' },
   { key: 'sent', label: 'Gesendet' },
   { key: 'failed', label: 'Fehlgeschlagen' },
-  { key: 'off', label: 'Deaktiviert' },
+  { key: 'off', label: 'Inaktiv' },
 ];
 
 function MessagesSection({ bookingId }: { bookingId: string }) {

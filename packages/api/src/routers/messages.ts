@@ -13,7 +13,7 @@ import {
 } from '@cm/db';
 import { createChannexClient, ChannexError } from '@cm/channex';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
-import { computeDueAt } from '../services/triggers';
+import { dispatchDisposition } from '../services/triggers';
 import { buildBookingVars, renderTemplate } from '../services/templates';
 import { isTemplateEnabledForBooking } from '../services/scope';
 import { resolveCustomVars } from '../services/custom-vars';
@@ -38,6 +38,8 @@ export interface MessageTimelineItem {
     | 'off'
     | 'planned'
     | 'pending'
+    | 'overdue'
+    | 'skipped'
     | 'queued'
     | 'sending'
     | 'sent'
@@ -236,12 +238,18 @@ export const messagesRouter = router({
         });
         const overridden = overrideVal !== undefined;
         const row = rowByTpl.get(t.id);
-        const due = computeDueAt(t.trigger, {
-          checkin: bk.checkin,
-          checkout: bk.checkout,
-          createdAt: bk.createdAt,
-          timeZone: tz,
-        });
+        // Mirror the dispatcher's real decision (incl. the 2-day grace) so the
+        // label is honest: planned / about-to-send / overdue-needs-manual / n/a.
+        const { due, disposition } = dispatchDisposition(
+          t.trigger,
+          {
+            checkin: bk.checkin,
+            checkout: bk.checkout,
+            createdAt: bk.createdAt,
+            timeZone: tz,
+          },
+          now,
+        );
         if (row) {
           items.push({
             key: `tpl-${t.id}`,
@@ -265,9 +273,13 @@ export const messagesRouter = router({
             trigger: t.trigger,
             status: !enabled
               ? 'off'
-              : due && due.getTime() > now
+              : disposition === 'future'
                 ? 'planned'
-                : 'pending',
+                : disposition === 'due'
+                  ? 'pending'
+                  : disposition === 'overdue'
+                    ? 'overdue'
+                    : 'skipped',
             enabled,
             overridden,
             at: due ? due.toISOString() : null,
