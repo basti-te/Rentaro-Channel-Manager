@@ -1,6 +1,6 @@
 # ADR 0011 — Min-stay enforcement gap (Channex → Booking.com)
 
-**Status:** Accepted (2026-05) — resolved operationally; no auto-monitoring yet
+**Status:** Accepted — root cause confirmed 2026-06-01; no auto-monitoring built
 **Context:** Single-tenant live (CITY APARTMENTS ESSEN), `rateSource = 'pricelabs'`.
 
 ## Symptom
@@ -13,41 +13,49 @@ The Booking.com extranet rate showed *"Keine Mindestaufenthaltsdauer"*, while th
 
 - Channex `GET /restrictions` returned the **correct** `min_stay_arrival` /
   `min_stay_through` (5–7) on **all three** rate plans for Whg 18 — including the
-  `Standard - BookingCom` plan (`36254820`) — for the affected November dates.
+  `Standard - BookingCom` plan (`36254820`) — for the affected dates.
 - So the value was present in Channex; the gap was purely **Channex → Booking.com**
-  (price propagated from the rate plan, the LOS restriction did not).
+  (price propagated, the LOS restriction did not reach the rate guests booked).
 
-## Root cause (most likely)
+## Root cause (confirmed)
 
-A **duplicate Booking.com rate category** in the extranet (a "weekly" + a "daily"
-rate). The restriction effectively applied to one, but guests could book the
-other, which carried no min-stay. Per ADR 0007 the Channex children inherit
-restrictions from the primary, so the Channex side looked correct throughout —
-the break was on the Booking.com side.
+**Multiple rate categories on the Booking.com listing.** The min-stay effectively
+attached to one rate, but guests could book another that carried none — so Channex's
+per-date restriction never governed the rate actually sold.
 
-## Resolution
+Confirmed by the operator: *"Ich habe das Restriktionen-Problem lösen können, indem
+ich einfach die anderen Rates gelöscht habe."* Reducing the listing to a **single**
+Booking.com rate category resolved enforcement immediately.
 
-Operator (a) deleted the second Booking.com rate category, reducing to one
-bookable rate, and (b) triggered a **fresh PriceLabs sync**, which wrote the
-restrictions onto the now-unambiguous single rate. Min-stay then enforced.
+Two steps the operator also tried were **not** the decisive lever:
 
-Note: a **Rentaro Full Sync does NOT** affect this — in `pricelabs` mode the ARI
-flusher suppresses stay restrictions (ADR 0006); min-stay reaches Channex only
-via PriceLabs.
+- A **Rentaro Full Sync** does nothing here — in `pricelabs` mode the ARI flusher
+  suppresses stay restrictions (ADR 0006); min-stay reaches Channex only via PriceLabs.
+- A **manual default min-stay** on the Booking rate is a separate, static setting
+  (rate-default vs. per-date calendar value). It is not the PriceLabs-driven value
+  and would be wrong for peak (needs 5–7) and for low-season gap-fill.
+
+## Operational rule (corollary to ADR 0007)
+
+**One Booking.com rate category per listing.** ADR 0007 fixes one room-type + one
+rate-plan per property on our side; the OTA-side corollary is that the Booking.com
+listing must expose exactly **one** rate. Extra rate categories silently break
+min-stay enforcement (restrictions land on one, guests book another). This is a
+required **onboarding check** for every future tenant, not a one-off.
 
 ## Decision
 
-We do **not** build automated min-stay monitoring yet (operator's call,
-2026-05). OTA-side restriction enforcement stays operator-verified for now.
+We do **not** build automated min-stay monitoring yet (operator's call, 2026-06).
+OTA-side restriction enforcement stays operator-verified for now.
 
 ## Future guardrail (when needed)
 
 The only automatic way to catch this class of failure is an **empirical
-booking-time check**, because a Channex self-check always looks correct (as it
-did here). On booking-feed ingestion: compute `nights = checkout − checkin` and
-compare against the `min_stay_arrival` Channex reports for the **arrival date**;
-if `nights < min_stay_arrival`, notify the operator (reuse the Resend pipeline).
-A daily Channex self-consistency report would **not** have caught this.
+booking-time check**, because a Channex self-check always looks correct (as it did
+here). On booking-feed ingestion: compute `nights = checkout − checkin` and compare
+against the `min_stay_arrival` Channex reports for the **arrival date**; if
+`nights < min_stay_arrival`, notify the operator (reuse the Resend pipeline). A
+daily Channex self-consistency report would **not** have caught this.
 
 ## See also
 
