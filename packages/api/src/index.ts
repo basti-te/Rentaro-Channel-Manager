@@ -73,6 +73,7 @@ export {
 export {
   notifyBookingEvent,
   notifySyncError,
+  notifyOwnerNewSignup,
   type NotificationKind,
   type NotifyOutcome,
   type BookingNotificationContext,

@@ -28,13 +28,23 @@ export async function onboardNewUser(db: Database, input: OnboardInput) {
     );
 
     const existing = await tx
-      .select({ tenantId: memberships.tenantId, role: memberships.role })
+      .select({
+        tenantId: memberships.tenantId,
+        role: memberships.role,
+        name: tenants.name,
+      })
       .from(memberships)
+      .leftJoin(tenants, eq(tenants.id, memberships.tenantId))
       .where(eq(memberships.userId, input.userId))
       .limit(1);
 
     if (existing.length > 0) {
-      return { tenantId: existing[0]!.tenantId, role: existing[0]!.role, created: false };
+      return {
+        tenantId: existing[0]!.tenantId,
+        role: existing[0]!.role,
+        name: existing[0]!.name ?? '',
+        created: false as const,
+      };
     }
 
     const name = input.tenantName?.trim() || defaultTenantName(input.email);
@@ -64,7 +74,7 @@ export async function onboardNewUser(db: Database, input: OnboardInput) {
       trialEndsAt,
     });
 
-    return { tenantId: tenant!.id, role: 'owner' as const, created: true };
+    return { tenantId: tenant!.id, role: 'owner' as const, name, created: true as const };
   });
 }
 

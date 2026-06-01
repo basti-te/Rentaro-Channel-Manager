@@ -75,6 +75,17 @@ export type AppEvents = {
       reason?: string;
     };
   };
+  /**
+   * A brand-new tenant just registered. The worker emails the platform owner.
+   * Emitted by `me.bootstrap` only when a tenant was actually created.
+   */
+  'tenant/registered': {
+    data: {
+      tenantId: string;
+      tenantName: string;
+      userEmail: string;
+    };
+  };
 };
 
 type AppInngest = ReturnType<typeof getInngest>;

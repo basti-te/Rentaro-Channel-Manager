@@ -56,10 +56,30 @@ export const meRouter = router({
       if (!ctx.userId || !ctx.userEmail) {
         throw new TRPCError({ code: 'UNAUTHORIZED' });
       }
-      return onboardNewUser(ctx.db, {
+      const result = await onboardNewUser(ctx.db, {
         userId: ctx.userId,
         email: ctx.userEmail,
         tenantName: input?.tenantName,
       });
+
+      // Platform-owner alert on a genuinely new registration. Fire via Inngest
+      // (CLAUDE.md rule 8: side-effects through jobs) so a mail hiccup can never
+      // block or fail onboarding; the worker sends to OWNER_NOTIFICATION_EMAIL.
+      if (result.created) {
+        try {
+          await ctx.inngest.send({
+            name: 'tenant/registered',
+            data: {
+              tenantId: result.tenantId,
+              tenantName: result.name,
+              userEmail: ctx.userEmail,
+            },
+          });
+        } catch {
+          // best-effort — never surface to the onboarding flow
+        }
+      }
+
+      return result;
     }),
 });

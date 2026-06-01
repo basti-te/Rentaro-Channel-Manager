@@ -22,6 +22,13 @@ const Env = z.object({
   /** From header, e.g. `Rentaro <alerts@rentaro.cloud>`. Domain must be
    *  verified in Resend. Without both this and RESEND_API_KEY, no mail sends. */
   RESEND_FROM: z.string().optional().transform((v) => v || undefined),
+  /** Platform owner address — receives an alert when a NEW account registers
+   *  at Rentaro. Unset → the registration alert is silently skipped. */
+  OWNER_NOTIFICATION_EMAIL: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(z.string().email().optional()),
 
   // Twilio SMS — optional; test-send / automation degrade gracefully if unset.
   TWILIO_ACCOUNT_SID: z.string().optional().transform((v) => v || undefined),

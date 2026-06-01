@@ -190,3 +190,40 @@ export async function notifySyncError(
     };
   }
 }
+
+/**
+ * Platform-owner alert: a brand-new tenant just registered. Sent to the SaaS
+ * operator's address (OWNER_NOTIFICATION_EMAIL), NOT a tenant address — so it
+ * deliberately ignores the per-tenant notify settings. Best-effort: never throws.
+ */
+export async function notifyOwnerNewSignup(
+  email: EmailConfig,
+  ownerEmail: string | undefined,
+  args: { tenantName: string; userEmail: string; tenantId: string; at?: Date },
+): Promise<NotifyOutcome> {
+  try {
+    const to = ownerEmail?.trim();
+    if (!to) return { sent: false, reason: 'no_email' };
+
+    const when = (args.at ?? new Date()).toLocaleString('de-DE', {
+      timeZone: 'Europe/Berlin',
+    });
+    const subject = `Neue Rentaro-Registrierung: ${dash(args.tenantName)}`;
+    const text = [
+      'Es hat sich ein neuer Account bei Rentaro registriert.',
+      '',
+      `Workspace:  ${dash(args.tenantName)}`,
+      `Nutzer:     ${dash(args.userEmail)}`,
+      `Tenant-ID:  ${args.tenantId}`,
+      `Zeitpunkt:  ${when}`,
+    ].join('\n');
+
+    return toOutcome(await sendEmail(email, { to, subject, text }));
+  } catch (err) {
+    return {
+      sent: false,
+      reason: 'error',
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+}

@@ -10,6 +10,7 @@ import { billingReconcile } from './functions/billing-reconcile';
 import { channexFullSync } from './functions/channex-full-sync';
 import { outboundReviewsDispatch } from './functions/outbound-reviews-dispatch';
 import { outboundReviewsSend } from './functions/outbound-reviews-send';
+import { tenantRegisteredNotify } from './functions/tenant-registered';
 
 /**
  * All functions Inngest should serve. Add new ones here.
@@ -31,4 +32,5 @@ export const inngestFunctions = [
   channexFullSync,
   outboundReviewsDispatch,
   outboundReviewsSend,
+  tenantRegisteredNotify,
 ];

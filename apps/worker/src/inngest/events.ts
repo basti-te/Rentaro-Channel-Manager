@@ -117,4 +117,18 @@ export type Events = {
       reason?: string;
     };
   };
+
+  /**
+   * A brand-new tenant just registered (first login → first tenant created).
+   * The worker emails the platform owner (OWNER_NOTIFICATION_EMAIL). Emitted
+   * by the API's `me.bootstrap` mutation ONLY when a tenant was actually
+   * created (not on idempotent re-calls).
+   */
+  'tenant/registered': {
+    data: {
+      tenantId: string;
+      tenantName: string;
+      userEmail: string;
+    };
+  };
 };
