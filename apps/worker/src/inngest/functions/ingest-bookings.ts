@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import { bookings, channexProperties, createDb } from '@cm/db';
 import { createChannexClient, ChannexError, type Booking as ChannexBooking } from '@cm/channex';
 import { notifyBookingEvent, enqueueAri, type AriChange, type EmailConfig } from '@cm/api';
@@ -152,6 +152,36 @@ export const ingestBookings = inngest.createFunction(
               .limit(1)
           )[0];
 
+          // Migration-seam reconcile: the FIRST feed delivery for a reservation
+          // that was originally IMPORTED (channex_booking_id NULL, e.g.
+          // external_id 'guesty:<code>') must ADOPT that row, not insert a
+          // duplicate. The stable join key across import + feed is the OTA
+          // confirmation code. Scoped to the same tenant + apartment, and only
+          // rows that have no Channex id yet, so we can never merge two distinct
+          // Channex bookings.
+          const adopt =
+            !existing && row.otaConfirmationCode
+              ? (
+                  await db
+                    .select({
+                      id: bookings.id,
+                      checkin: bookings.checkin,
+                      checkout: bookings.checkout,
+                    })
+                    .from(bookings)
+                    .where(
+                      and(
+                        eq(bookings.tenantId, mapping.tenantId),
+                        eq(bookings.propertyId, internalProperty.id),
+                        eq(bookings.otaConfirmationCode, row.otaConfirmationCode),
+                        isNull(bookings.channexBookingId),
+                        ne(bookings.status, 'cancelled'),
+                      ),
+                    )
+                    .limit(1)
+                )[0]
+              : undefined;
+
           // Same revision id (both present) = idempotent feed re-delivery →
           // don't re-notify. Missing revision ids fall through to normal
           // classification rather than wrongly matching null === null.
@@ -169,41 +199,23 @@ export const ingestBookings = inngest.createFunction(
             notifyKind = null;
           } else if (row.status === 'cancelled') {
             notifyKind = existing?.status === 'cancelled' ? null : 'cancellation';
-          } else if (!existing) {
+          } else if (!existing && !adopt) {
             notifyKind = 'new_booking';
           } else {
+            // existing row (matched by channex_booking_id) OR an adopted import
+            // → treat as a modification, not a spurious "new booking".
             notifyKind = 'modification';
           }
 
-          // ── UPSERT on channex_booking_id ───────────────────────────
-          await db
-            .insert(bookings)
-            .values({
-              tenantId: mapping.tenantId,
-              propertyId: internalProperty.id,
-              source: row.source,
-              status: row.status,
-              guestName: row.guestName,
-              guestPhone: row.guestPhone,
-              guestEmail: row.guestEmail,
-              guestCountry: row.guestCountry,
-              guestCount: row.guestCount,
-              checkin: row.checkin,
-              checkout: row.checkout,
-              priceCents: row.priceCents,
-              currency: row.currency,
-              channexBookingId: row.channexBookingId,
-              channexRevisionId: row.channexRevisionId,
-              channexAckedAt: new Date(),
-              otaName: row.otaName,
-              otaConfirmationCode: row.otaConfirmationCode,
-              rawPayload: row.rawPayload as object,
-              lastSyncAt: new Date(),
-              autoReviewEnabled: row.status === 'cancelled' ? false : true,
-            })
-            .onConflictDoUpdate({
-              target: bookings.channexBookingId,
-              set: {
+          // ── Persist ────────────────────────────────────────────────
+          if (adopt) {
+            // Adopt the imported row in place: attach the Channex ids + the
+            // latest OTA data, keeping the original row id (and its links /
+            // audit trail). This is what prevents the migration-seam duplicate.
+            await db
+              .update(bookings)
+              .set({
+                source: row.source,
                 status: row.status,
                 guestName: row.guestName,
                 guestPhone: row.guestPhone,
@@ -214,6 +226,7 @@ export const ingestBookings = inngest.createFunction(
                 checkout: row.checkout,
                 priceCents: row.priceCents,
                 currency: row.currency,
+                channexBookingId: row.channexBookingId,
                 channexRevisionId: row.channexRevisionId,
                 channexAckedAt: new Date(),
                 otaName: row.otaName,
@@ -222,17 +235,70 @@ export const ingestBookings = inngest.createFunction(
                 lastSyncAt: new Date(),
                 lastSyncError: null,
                 updatedAt: new Date(),
-              },
-            });
+              })
+              .where(eq(bookings.id, adopt.id));
+          } else {
+            // New from the feed, or an update of a feed-native row
+            // (UPSERT on the UNIQUE channex_booking_id).
+            await db
+              .insert(bookings)
+              .values({
+                tenantId: mapping.tenantId,
+                propertyId: internalProperty.id,
+                source: row.source,
+                status: row.status,
+                guestName: row.guestName,
+                guestPhone: row.guestPhone,
+                guestEmail: row.guestEmail,
+                guestCountry: row.guestCountry,
+                guestCount: row.guestCount,
+                checkin: row.checkin,
+                checkout: row.checkout,
+                priceCents: row.priceCents,
+                currency: row.currency,
+                channexBookingId: row.channexBookingId,
+                channexRevisionId: row.channexRevisionId,
+                channexAckedAt: new Date(),
+                otaName: row.otaName,
+                otaConfirmationCode: row.otaConfirmationCode,
+                rawPayload: row.rawPayload as object,
+                lastSyncAt: new Date(),
+                autoReviewEnabled: row.status === 'cancelled' ? false : true,
+              })
+              .onConflictDoUpdate({
+                target: bookings.channexBookingId,
+                set: {
+                  status: row.status,
+                  guestName: row.guestName,
+                  guestPhone: row.guestPhone,
+                  guestEmail: row.guestEmail,
+                  guestCountry: row.guestCountry,
+                  guestCount: row.guestCount,
+                  checkin: row.checkin,
+                  checkout: row.checkout,
+                  priceCents: row.priceCents,
+                  currency: row.currency,
+                  channexRevisionId: row.channexRevisionId,
+                  channexAckedAt: new Date(),
+                  otaName: row.otaName,
+                  otaConfirmationCode: row.otaConfirmationCode,
+                  rawPayload: row.rawPayload as object,
+                  lastSyncAt: new Date(),
+                  lastSyncError: null,
+                  updatedAt: new Date(),
+                },
+              });
+          }
 
           // Availability re-sync window: the booked nights, unioned with the
           // PREVIOUS dates on a modification so a shortened stay re-opens the
           // freed nights too. The flusher recomputes occupancy from all active
           // bookings, so this is safe even when ranges overlap other stays.
-          const range = existing
+          const prior = existing ?? adopt;
+          const range = prior
             ? unionRange(
                 { from: row.checkin, to: row.checkout },
-                { from: existing.checkin, to: existing.checkout },
+                { from: prior.checkin, to: prior.checkout },
               )
             : { from: row.checkin, to: row.checkout };
 
