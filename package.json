@@ -17,6 +17,7 @@
     "db:migrate": "pnpm --filter @cm/db migrate",
     "db:seed": "pnpm --filter @cm/db seed",
     "db:import-guesty": "pnpm --filter @cm/db import-guesty",
+    "db:import-smoobu": "pnpm --filter @cm/db import-smoobu",
     "db:delete-test-bookings": "pnpm --filter @cm/db delete-test-bookings",
     "db:disconnect-channex": "pnpm --filter @cm/db disconnect-channex",
     "db:verify": "pnpm --filter @cm/db verify",

@@ -22,6 +22,7 @@
     "webhooks:latest": "tsx scripts/latest-webhook.ts",
     "check-onboarding": "tsx scripts/check-onboarding.ts",
     "import-guesty": "tsx scripts/import-guesty.ts",
+    "import-smoobu": "tsx scripts/import-smoobu.ts",
     "delete-test-bookings": "tsx scripts/delete-test-bookings.ts",
     "disconnect-channex": "tsx scripts/disconnect-channex.ts",
     "push": "drizzle-kit push",
