@@ -77,6 +77,22 @@ ALTER TABLE public.cleaning_checklist_items  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cleaning_rules            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cleaning_messages         ENABLE ROW LEVEL SECURITY;
 
+-- Tables added after the initial RLS pass. They are BACKEND-ONLY (not in the
+-- realtime publication, never queried directly by the browser — all access goes
+-- through the API on the service-role/postgres connection, which bypasses RLS).
+-- So RLS is enabled with NO SELECT policy = default-deny for anon/authenticated.
+-- (Closes Supabase `rls_disabled_in_public` critical advisory, 2026-05-31.)
+ALTER TABLE public.rate_overrides            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ari_pending               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.message_variables         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.message_variable_values   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.message_booking_overrides ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.message_template_listings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.outbound_reviews          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cleaning_calendars        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cleaning_rule_listings    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cleaning_rule_teammates   ENABLE ROW LEVEL SECURITY;
+
 -- ─── SELECT policies ─────────────────────────────────────────────────────────
 -- Idempotent pattern: DROP IF EXISTS, then CREATE.
 
