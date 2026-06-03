@@ -273,6 +273,7 @@ function RevenueBars({
 
   const max = Math.max(1, ...points.map((p) => p.cents));
   const step = Math.max(1, Math.ceil(points.length / 12));
+  const H = 176; // chart height in px (definite → bar heights are reliable)
 
   if (points.length === 0) {
     return <p className="mt-4 text-[12px] text-whisper">Keine Daten.</p>;
@@ -280,18 +281,14 @@ function RevenueBars({
 
   return (
     <div className="mt-4">
-      <div className="flex h-44 items-end gap-px">
+      <div className="flex items-end gap-px" style={{ height: H }}>
         {points.map((p) => (
           <div
             key={p.key}
-            className="group relative flex flex-1 flex-col justify-end"
+            className="flex-1 rounded-t-sm bg-brand/75 transition-colors hover:bg-brand"
+            style={{ height: p.cents > 0 ? Math.max(2, (p.cents / max) * H) : 0 }}
             title={`${p.full}: ${money(p.cents)}`}
-          >
-            <div
-              className="w-full rounded-t-sm bg-brand/75 transition-colors group-hover:bg-brand"
-              style={{ height: `${p.cents > 0 ? Math.max(2, (p.cents / max) * 100) : 0}%` }}
-            />
-          </div>
+          />
         ))}
       </div>
       <div className="mt-1 flex gap-px">
