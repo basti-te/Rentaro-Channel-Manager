@@ -23,20 +23,12 @@ import {
   cleaningRules,
   cleaningRuleListings,
   cleaningRuleTeammates,
-  cleaningChecklistItems,
   cleaningMessages,
   properties,
   teammates,
   tenants,
 } from '@cm/db';
-import {
-  buildCleaningVars,
-  findNextReservation,
-  renderChecklist,
-  renderTemplate,
-  computeDueAt,
-  sendSms,
-} from '@cm/api';
+import { findNextReservation, computeDueAt, sendSms } from '@cm/api';
 import { env } from '../../env';
 import { inngest } from '../client';
 
@@ -73,8 +65,6 @@ async function dispatch(): Promise<CleaningDispatchResult> {
       id: cleaningRules.id,
       tenantId: cleaningRules.tenantId,
       trigger: cleaningRules.trigger,
-      body: cleaningRules.body,
-      checklistId: cleaningRules.checklistId,
       tz: tenants.defaultTimezone,
       smsSenderId: tenants.smsSenderId,
     })
@@ -85,6 +75,13 @@ async function dispatch(): Promise<CleaningDispatchResult> {
   let claimed = 0;
   let sent = 0;
   let failed = 0;
+
+  // Bundle: accumulate due cleanings per teammate and send ONE digest SMS each
+  // (instead of one SMS per cleaning). teammateId → rows + concise lines.
+  const buckets = new Map<
+    string,
+    { phone: string | null; smsSenderId: string | null; rowIds: string[]; lines: string[] }
+  >();
 
   const horizon = new Date(now.getTime() + 60 * 86_400_000)
     .toISOString()
@@ -120,17 +117,6 @@ async function dispatch(): Promise<CleaningDispatchResult> {
         ),
       );
     if (recipients.length === 0) continue; // nobody to notify
-
-    // Resolve the attached checklist once per rule.
-    let checklistText: string | null = null;
-    if (r.checklistId) {
-      const items = await db
-        .select({ label: cleaningChecklistItems.label })
-        .from(cleaningChecklistItems)
-        .where(eq(cleaningChecklistItems.checklistId, r.checklistId))
-        .orderBy(cleaningChecklistItems.position);
-      if (items.length > 0) checklistText = renderChecklist(items);
-    }
 
     const candidates = await db
       .select({
@@ -176,25 +162,19 @@ async function dispatch(): Promise<CleaningDispatchResult> {
         nextCache.set(nkey, next);
       }
 
-      const renderedBody = renderTemplate(
-        r.body,
-        buildCleaningVars(
-          {
-            guestName: b.guestName,
-            checkin: b.checkin,
-            checkout: b.checkout,
-            checkoutTime: b.checkoutTime,
-            guestCount: b.guestCount,
-            apartmentName: b.propertyName,
-          },
-          next,
-          checklistText,
-        ),
-      );
+      // Concise digest line for this cleaning. Same-day turnover (next arrival
+      // on the check-out date) is highlighted — the cleaner's key signal.
+      const sameDayArrival =
+        next && next.checkin === b.checkout ? (next.checkinTime ?? '15:00') : null;
+      const line =
+        `• ${b.propertyName} · Check-out ${b.checkoutTime}` +
+        (sameDayArrival ? ` · ANREISE ${sameDayArrival}` : '');
 
       for (const tm of recipients) {
         if (claimed >= MAX_PER_RUN) break;
 
+        // Claim one row per (rule,booking,teammate) for dedup; the SMS itself is
+        // bundled and sent once per teammate after the loops.
         const inserted = await db
           .insert(cleaningMessages)
           .values({
@@ -202,7 +182,7 @@ async function dispatch(): Promise<CleaningDispatchResult> {
             ruleId: r.id,
             bookingId: b.id,
             teammateId: tm.id,
-            body: renderedBody,
+            body: line,
             toAddress: tm.phone,
             status: 'queued',
             scheduledAt: dueAt,
@@ -215,47 +195,64 @@ async function dispatch(): Promise<CleaningDispatchResult> {
             ],
           })
           .returning({ id: cleaningMessages.id });
-
         if (inserted.length === 0) continue; // already handled
         claimed++;
 
-        const from = r.smsSenderId || env.TWILIO_FROM;
-        const res = await sendSms(
-          {
-            accountSid: env.TWILIO_ACCOUNT_SID,
-            authToken: env.TWILIO_AUTH_TOKEN,
-            from,
-            statusCallback: statusCallbackUrl(),
-          },
-          tm.phone,
-          renderedBody,
-        );
-
-        if (res.ok) {
-          sent++;
-          await db
-            .update(cleaningMessages)
-            .set({
-              status: 'sent',
-              sentAt: new Date(),
-              externalId: res.sid,
-              fromAddress: from ?? null,
-            })
-            .where(eq(cleaningMessages.id, inserted[0]!.id));
-        } else {
-          failed++;
-          await db
-            .update(cleaningMessages)
-            .set({
-              status: 'failed',
-              error:
-                res.reason === 'not_configured'
-                  ? 'twilio_not_configured'
-                  : res.message,
-            })
-            .where(eq(cleaningMessages.id, inserted[0]!.id));
+        let bucket = buckets.get(tm.id);
+        if (!bucket) {
+          bucket = { phone: tm.phone, smsSenderId: r.smsSenderId, rowIds: [], lines: [] };
+          buckets.set(tm.id, bucket);
         }
+        bucket.rowIds.push(inserted[0]!.id);
+        if (!bucket.lines.includes(line)) bucket.lines.push(line);
       }
+    }
+  }
+
+  // ── Send ONE bundled digest SMS per teammate ─────────────────────────────
+  // Cost: 1 SMS per cleaner per run instead of one per cleaning.
+  for (const bucket of buckets.values()) {
+    if (!bucket.phone) {
+      await db
+        .update(cleaningMessages)
+        .set({ status: 'failed', error: 'no_phone' })
+        .where(inArray(cleaningMessages.id, bucket.rowIds));
+      failed++;
+      continue;
+    }
+    const body = `Anstehende Reinigungen:\n${bucket.lines.join('\n')}`;
+    const from = bucket.smsSenderId || env.TWILIO_FROM;
+    const res = await sendSms(
+      {
+        accountSid: env.TWILIO_ACCOUNT_SID,
+        authToken: env.TWILIO_AUTH_TOKEN,
+        from,
+        statusCallback: statusCallbackUrl(),
+      },
+      bucket.phone,
+      body,
+    );
+    if (res.ok) {
+      sent++;
+      await db
+        .update(cleaningMessages)
+        .set({
+          status: 'sent',
+          sentAt: new Date(),
+          externalId: res.sid,
+          fromAddress: from ?? null,
+          body,
+        })
+        .where(inArray(cleaningMessages.id, bucket.rowIds));
+    } else {
+      failed++;
+      await db
+        .update(cleaningMessages)
+        .set({
+          status: 'failed',
+          error: res.reason === 'not_configured' ? 'twilio_not_configured' : res.message,
+        })
+        .where(inArray(cleaningMessages.id, bucket.rowIds));
     }
   }
 
