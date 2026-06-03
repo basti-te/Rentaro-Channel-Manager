@@ -12,6 +12,7 @@ import { router, tenantProcedure, editorProcedure } from '../trpc';
 import { renderTemplate, SAMPLE_VARS, TEMPLATE_VARS } from '../services/templates';
 import { resolveCustomVars } from '../services/custom-vars';
 import { sendSms } from '../services/twilio';
+import { checkSmsCountry } from '../services/sms-allowlist';
 import { parseTrigger } from '../services/triggers';
 import type { Database } from '@cm/db';
 
@@ -299,6 +300,19 @@ export const messageTemplatesRouter = router({
         throw new TRPCError({
           code: 'PRECONDITION_FAILED',
           message: 'SMS-Versand ist für diesen Workspace nicht aktiviert.',
+        });
+      }
+      const { ok: countryOk, country } = await checkSmsCountry(
+        ctx.db,
+        ctx.tenantId!,
+        input.toPhone,
+      );
+      if (!countryOk) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: country
+            ? `SMS nach ${country} ist für diesen Workspace nicht freigeschaltet.`
+            : 'Zielland der Telefonnummer nicht erkennbar.',
         });
       }
       const from = tenantRow?.smsSenderId || ctx.env.TWILIO_FROM;

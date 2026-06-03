@@ -79,6 +79,10 @@ export {
   type SmsRate,
 } from './services/sms-rates';
 export {
+  loadAllowedSmsCountries,
+  checkSmsCountry,
+} from './services/sms-allowlist';
+export {
   sendEmail,
   isEmailConfigured,
   type EmailConfig,

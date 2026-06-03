@@ -160,8 +160,10 @@ opted-in tenants — they just aren't billed yet).
    - Customer mapping: default (`stripe_customer_id`); payload value key:
      default (`value`). The worker sends exactly these keys.
 2. **Create a metered Price** linked to that Meter (a recurring usage Price on
-   the same product as the base plan), priced per segment (e.g. your Twilio
-   cost + margin). Its id is `STRIPE_PRICE_SMS_METERED`.
+   the same product as the base plan), priced at **€0.01 per unit**. Rentaro
+   reports the *charge in cents* as the meter value (per-country Twilio cost ×
+   FX × markup), so €0.01/unit makes the invoice total exact. Its id is
+   `STRIPE_PRICE_SMS_METERED`.
 3. Set both in the **worker** env:
    ```
    STRIPE_SMS_METER_EVENT_NAME=sms_segments
@@ -172,11 +174,16 @@ opted-in tenants — they just aren't billed yet).
 
 - `sms-usage-reconcile` runs daily (03:30) — or on demand via the
   `sms-usage/reconcile.now` Inngest event.
-- For each SMS-on, non-exempt tenant with an active subscription it sums the
-  segments of every SMS sent since `tenants.sms_usage_reported_through`
-  (guest `messages` + `cleaning_messages`), reports one meter event, attaches
-  the metered Price to the subscription (idempotent), then advances the
-  watermark.
+- For each SMS-on, non-exempt tenant with an active subscription it computes
+  Σ(segments × per-country customer price) for every SMS sent since
+  `tenants.sms_usage_reported_through` (guest `messages` + `cleaning_messages`),
+  reports that charge (in cents) as one meter event, attaches the metered Price
+  to the subscription (idempotent), then advances the watermark.
+- Per-country prices live in `sms-rates.ts` (Twilio cost × FX × markup); segment
+  counts follow Twilio's GSM-7/UCS-2 rules (`smsSegments`); the destination
+  country is parsed from the recipient number (`resolveSmsCountry`).
+- A tenant only sends SMS to countries on its **allow-list**
+  (`tenant_sms_countries`, edited at `/sms-laender`) — itself a subset of the
+  Twilio account's Geo Permissions.
 - **First run baselines** the watermark to "now" without billing history, so
-  switching metering on never retro-charges past SMS. Segment counts follow
-  Twilio's GSM-7/UCS-2 rules (`smsSegments`).
+  switching metering on never retro-charges past SMS.

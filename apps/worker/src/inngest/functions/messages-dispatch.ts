@@ -32,6 +32,8 @@ import {
   sendSms,
   isTemplateEnabledForBooking,
   resolveCustomVars,
+  loadAllowedSmsCountries,
+  resolveSmsCountry,
 } from '@cm/api';
 import { env } from '../../env';
 import { inngest } from '../client';
@@ -88,6 +90,9 @@ async function dispatch(): Promise<DispatchResult> {
   let sent = 0;
   let failed = 0;
 
+  // Per-tenant SMS country allow-list, loaded once per tenant per run.
+  const allowCache = new Map<string, Set<string>>();
+
   // Bounded booking window shared across templates of a tenant.
   const horizon = new Date(now.getTime() + 60 * 86_400_000)
     .toISOString()
@@ -99,6 +104,14 @@ async function dispatch(): Promise<DispatchResult> {
   for (const t of tpls) {
     if (claimed >= MAX_PER_RUN) break;
     if (t.channel === 'sms' && !t.smsEnabled) continue; // SMS add-on off for tenant
+    let allowed: Set<string> | null = null;
+    if (t.channel === 'sms') {
+      allowed = allowCache.get(t.tenantId) ?? null;
+      if (!allowed) {
+        allowed = await loadAllowedSmsCountries(db, t.tenantId);
+        allowCache.set(t.tenantId, allowed);
+      }
+    }
 
     // Apartment scope (explicit allow-list) + per-booking overrides.
     const scoped = new Set(
@@ -174,6 +187,10 @@ async function dispatch(): Promise<DispatchResult> {
         now.getTime(),
       );
       if (!dueAt || disposition !== 'due') continue;
+      if (t.channel === 'sms') {
+        const country = resolveSmsCountry(b.guestPhone);
+        if (!country || !allowed!.has(country)) continue; // country not enabled
+      }
 
       const baseVars = buildBookingVars({
         guestName: b.guestName,

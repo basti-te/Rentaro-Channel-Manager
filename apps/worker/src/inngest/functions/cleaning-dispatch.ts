@@ -28,7 +28,13 @@ import {
   teammates,
   tenants,
 } from '@cm/db';
-import { findNextReservation, computeDueAt, sendSms } from '@cm/api';
+import {
+  findNextReservation,
+  computeDueAt,
+  sendSms,
+  loadAllowedSmsCountries,
+  resolveSmsCountry,
+} from '@cm/api';
 import { env } from '../../env';
 import { inngest } from '../client';
 
@@ -84,6 +90,9 @@ async function dispatch(): Promise<CleaningDispatchResult> {
     { phone: string | null; smsSenderId: string | null; rowIds: string[]; lines: string[] }
   >();
 
+  // Per-tenant SMS country allow-list, loaded once per tenant per run.
+  const allowCache = new Map<string, Set<string>>();
+
   const horizon = new Date(now.getTime() + 60 * 86_400_000)
     .toISOString()
     .slice(0, 10);
@@ -94,6 +103,11 @@ async function dispatch(): Promise<CleaningDispatchResult> {
   for (const r of rules) {
     if (claimed >= MAX_PER_RUN) break;
     if (!r.smsEnabled) continue; // SMS add-on not enabled for this tenant
+    let allowed = allowCache.get(r.tenantId);
+    if (!allowed) {
+      allowed = await loadAllowedSmsCountries(db, r.tenantId);
+      allowCache.set(r.tenantId, allowed);
+    }
 
     const scoped = new Set(
       (
@@ -174,6 +188,8 @@ async function dispatch(): Promise<CleaningDispatchResult> {
 
       for (const tm of recipients) {
         if (claimed >= MAX_PER_RUN) break;
+        const country = resolveSmsCountry(tm.phone);
+        if (!country || !allowed.has(country)) continue; // country not enabled
 
         // Claim one row per (rule,booking,teammate) for dedup; the SMS itself is
         // bundled and sent once per teammate after the loops.

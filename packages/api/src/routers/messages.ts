@@ -18,6 +18,7 @@ import { buildBookingVars, renderTemplate } from '../services/templates';
 import { isTemplateEnabledForBooking } from '../services/scope';
 import { resolveCustomVars } from '../services/custom-vars';
 import { sendSms } from '../services/twilio';
+import { checkSmsCountry } from '../services/sms-allowlist';
 
 /**
  * Channex iframe path for the guest-messaging screen. The mapping iframe
@@ -492,6 +493,19 @@ export const messagesRouter = router({
           throw new TRPCError({
             code: 'PRECONDITION_FAILED',
             message: 'SMS-Versand ist für diesen Workspace nicht aktiviert.',
+          });
+        }
+        const { ok: countryOk, country } = await checkSmsCountry(
+          ctx.db,
+          ctx.tenantId!,
+          bk.guestPhone,
+        );
+        if (!countryOk) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: country
+              ? `SMS nach ${country} ist für diesen Workspace nicht freigeschaltet.`
+              : 'Zielland der Telefonnummer nicht erkennbar.',
           });
         }
         const from = tenantRow?.smsSenderId || ctx.env.TWILIO_FROM;

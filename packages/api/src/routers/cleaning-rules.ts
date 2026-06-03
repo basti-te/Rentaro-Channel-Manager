@@ -18,6 +18,7 @@ import {
   renderTemplate,
 } from '../services/cleaning';
 import { sendSms } from '../services/twilio';
+import { checkSmsCountry } from '../services/sms-allowlist';
 import type { Database } from '@cm/db';
 
 /** Reject trigger strings the dispatcher can't parse. */
@@ -306,6 +307,19 @@ export const cleaningRulesRouter = router({
         throw new TRPCError({
           code: 'PRECONDITION_FAILED',
           message: 'SMS-Versand ist für diesen Workspace nicht aktiviert.',
+        });
+      }
+      const { ok: countryOk, country } = await checkSmsCountry(
+        ctx.db,
+        ctx.tenantId!,
+        input.toPhone,
+      );
+      if (!countryOk) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: country
+            ? `SMS nach ${country} ist für diesen Workspace nicht freigeschaltet.`
+            : 'Zielland der Telefonnummer nicht erkennbar.',
         });
       }
       const from = tenantRow?.smsSenderId || ctx.env.TWILIO_FROM;
