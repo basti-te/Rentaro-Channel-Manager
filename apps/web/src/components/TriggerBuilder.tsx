@@ -16,7 +16,7 @@ import { Input } from './ui/Input';
 import { Label } from './ui/Label';
 
 export type Anchor = 'reservation' | 'checkin' | 'checkout' | 'lastminute';
-export type Rel = 'before' | 'on' | 'after';
+export type Rel = 'before' | 'on' | 'after' | 'now';
 
 export interface TriggerParts {
   anchor: Anchor;
@@ -46,6 +46,7 @@ type TimedAnchor = Exclude<Anchor, 'lastminute'>;
 /** Allowed relations per anchor + their labels (per the product spec). */
 const REL_OPTIONS: Record<TimedAnchor, Array<{ rel: Rel; label: string }>> = {
   reservation: [
+    { rel: 'now', label: 'Sofort bei Reservierung' },
     { rel: 'on', label: 'Am Tag der Reservierung' },
     { rel: 'after', label: 'Tage nach Reservierung' },
   ],
@@ -72,6 +73,8 @@ const TIME_OPTIONS: string[] = Array.from({ length: 48 }, (_, i) => {
 const DEFAULTS = { days: 1, time: '18:00', thresholdDays: 2 };
 
 export function buildTriggerDsl(p: TriggerParts): string {
+  // "Sofort bei Reservierung" → fire at the exact booking-creation instant.
+  if (p.anchor === 'reservation' && p.rel === 'now') return 'booking_created';
   if (p.anchor === 'lastminute') {
     const t = Math.max(1, Math.min(90, p.thresholdDays || DEFAULTS.thresholdDays));
     return `lastminute:${t}d`;
@@ -93,7 +96,7 @@ export function buildTriggerDsl(p: TriggerParts): string {
 export function parseTriggerDsl(s: string): TriggerParts {
   // Legacy bare trigger → "on day of reservation" (time defaulted).
   if (s === 'booking_created')
-    return { anchor: 'reservation', rel: 'on', ...DEFAULTS, time: '09:00' };
+    return { anchor: 'reservation', rel: 'now', ...DEFAULTS, time: '09:00' };
   const lm = /^lastminute:(\d{1,3})d$/.exec(s);
   if (lm) {
     return {
@@ -202,6 +205,13 @@ export function TriggerBuilder({
             zusätzlich eine reguläre „Tage vor Check-in"-Vorlage.
           </p>
         </>
+      ) : rel === 'now' ? (
+        <p className="text-[11px] text-whisper">
+          Wird unmittelbar nach Eingang der Reservierung versendet (z. B.
+          Buchungsbestätigung) — ohne feste Uhrzeit, beim nächsten Versandlauf.
+          Sehr alte importierte Buchungen werden nicht nachträglich
+          angeschrieben.
+        </p>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2">
