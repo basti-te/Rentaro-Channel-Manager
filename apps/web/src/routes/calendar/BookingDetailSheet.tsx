@@ -4,7 +4,10 @@ import { de } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
   Calendar as CalIcon,
+  Check,
+  ChevronDown,
   Clock,
+  Copy,
   Mail,
   MessageSquare,
   Pencil,
@@ -485,6 +488,27 @@ function MessagesSection({ bookingId }: { bookingId: string }) {
     onError: (e) => toast.error(e.message),
   });
 
+  // Which message previews are expanded, and which body was just copied.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const toggle = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  async function copyBody(key: string, body: string) {
+    try {
+      await navigator.clipboard.writeText(body);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1400);
+      toast.success('Nachricht kopiert');
+    } catch {
+      toast.error('Kopieren fehlgeschlagen');
+    }
+  }
+
   return (
     <Section icon={<MessageSquare className="h-4 w-4" />} label="Nachrichten">
       {q.isLoading ? (
@@ -600,10 +624,59 @@ function MessagesSection({ bookingId }: { bookingId: string }) {
                                   : 'Jetzt senden'}
                               </button>
                             )}
+                          {i.body && (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-0.5 text-muted hover:text-ink"
+                              onClick={() => toggle(i.key)}
+                              aria-expanded={expanded.has(i.key)}
+                            >
+                              <ChevronDown
+                                className={cn(
+                                  'h-3 w-3 transition-transform',
+                                  expanded.has(i.key) && 'rotate-180',
+                                )}
+                                strokeWidth={2}
+                              />
+                              Vorschau
+                            </button>
+                          )}
                         </div>
                         {i.error && (
                           <div className="text-[11px] text-danger mt-1 num">
                             {i.error}
+                          </div>
+                        )}
+                        {i.body && expanded.has(i.key) && (
+                          <div className="mt-2 rounded-md border border-line bg-surface px-3 py-2.5">
+                            <div className="mb-1.5 flex items-center justify-between gap-2">
+                              <span className="text-[10px] uppercase tracking-widest text-whisper">
+                                Vorschau
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => copyBody(i.key, i.body)}
+                                className={cn(
+                                  'inline-flex items-center gap-1 text-[11px] font-medium',
+                                  copiedKey === i.key
+                                    ? 'text-positive'
+                                    : 'text-brand hover:underline',
+                                )}
+                              >
+                                {copiedKey === i.key ? (
+                                  <>
+                                    <Check className="h-3 w-3" strokeWidth={2.5} /> Kopiert
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="h-3 w-3" strokeWidth={1.75} /> Kopieren
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                            <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-ink-soft">
+                              {i.body}
+                            </p>
                           </div>
                         )}
                       </li>
