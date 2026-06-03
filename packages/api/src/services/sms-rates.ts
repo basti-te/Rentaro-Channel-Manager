@@ -24,6 +24,7 @@ export const SMS_RATES: Record<string, SmsRate> = {
   BA: { name: "Bosnia And Herzegovina", costUsd: 0.511 },
   BB: { name: "Barbados", costUsd: 0.2624 },
   BD: { name: "Bangladesh", costUsd: 0.5962 },
+  BE: { name: "Belgium", costUsd: 0.09 }, // MANUAL: not in CSV — conservative estimate, replace with real Twilio price
   BF: { name: "Burkina Faso", costUsd: 0.3208 },
   BG: { name: "Bulgaria", costUsd: 0.1699 },
   BH: { name: "Bahrain", costUsd: 0.0386 },
@@ -131,6 +132,7 @@ export const SMS_RATES: Record<string, SmsRate> = {
   MU: { name: "Mauritius", costUsd: 0.2664 },
   MV: { name: "Maldives", costUsd: 0.248 },
   MW: { name: "Malawi", costUsd: 0.3067 },
+  MX: { name: "Mexico", costUsd: 0.06 }, // MANUAL: not in CSV — conservative estimate, replace with real Twilio price
   MY: { name: "Malaysia", costUsd: 0.1073 },
   MZ: { name: "Mozambique", costUsd: 0.417 },
   NA: { name: "Namibia", costUsd: 0.1562 },
