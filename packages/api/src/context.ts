@@ -29,6 +29,9 @@ export interface AppContextEnv {
   STRIPE_PRICE_BASE_ANNUAL?: string;
   STRIPE_PRICE_PROPERTY_MONTHLY?: string;
   STRIPE_PRICE_PROPERTY_ANNUAL?: string;
+  /** Usage-based SMS add-on (optional): metered Price id + Billing Meter event name. */
+  STRIPE_PRICE_SMS_METERED?: string;
+  STRIPE_SMS_METER_EVENT_NAME?: string;
 }
 
 /**

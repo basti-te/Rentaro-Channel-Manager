@@ -344,3 +344,46 @@ export async function reconcileQuantity(
   });
   return { updated: true, quantity: target };
 }
+
+/**
+ * Ensure the tenant's active Stripe Subscription carries the usage-based SMS
+ * metered Price as a line item (so meter events actually invoice). Idempotent —
+ * adds the item only if missing. No-op when STRIPE_PRICE_SMS_METERED is unset.
+ */
+export async function ensureSmsMeteredItem(
+  stripe: Stripe,
+  env: AppContextEnv,
+  subscriptionId: string,
+): Promise<boolean> {
+  const priceId = env.STRIPE_PRICE_SMS_METERED;
+  if (!priceId) return false;
+  const s = await stripe.subscriptions.retrieve(subscriptionId);
+  if (s.items.data.some((it) => it.price.id === priceId)) return true;
+  await stripe.subscriptions.update(subscriptionId, {
+    items: [{ price: priceId }],
+    proration_behavior: 'none',
+  });
+  return true;
+}
+
+/**
+ * Report SMS usage to the Stripe Billing Meter. `value` = SMS segments to add
+ * for this customer's current period. `identifier` makes the event idempotent
+ * (Stripe drops duplicates). No-op when STRIPE_SMS_METER_EVENT_NAME is unset or
+ * value ≤ 0.
+ */
+export async function reportSmsMeterEvent(
+  stripe: Stripe,
+  env: AppContextEnv,
+  customerId: string,
+  value: number,
+  identifier: string,
+): Promise<void> {
+  const eventName = env.STRIPE_SMS_METER_EVENT_NAME;
+  if (!eventName || value <= 0) return;
+  await stripe.billing.meterEvents.create({
+    event_name: eventName,
+    identifier,
+    payload: { stripe_customer_id: customerId, value: String(value) },
+  });
+}

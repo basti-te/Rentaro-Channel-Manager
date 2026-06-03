@@ -172,6 +172,15 @@ export const tenants = pgTable('tenants', {
   smsEnabled: boolean('sms_enabled').notNull().default(false),
 
   /**
+   * Watermark for usage-based SMS metering: the worker reports SMS segments
+   * sent after this instant to Stripe, then advances it. NULL = not yet
+   * baselined (the first reconcile sets it to now without billing history).
+   */
+  smsUsageReportedThrough: timestamp('sms_usage_reported_through', {
+    withTimezone: true,
+  }),
+
+  /**
    * Operator e-mail notifications (transactional, via Resend). NULL/empty
    * `notifyEmail` = notifications disabled entirely (nowhere to send). When
    * set, each `notify*` flag gates one event class. Sent immediately per

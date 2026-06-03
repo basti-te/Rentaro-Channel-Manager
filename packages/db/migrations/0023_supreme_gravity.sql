@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "sms_usage_reported_through" timestamp with time zone;

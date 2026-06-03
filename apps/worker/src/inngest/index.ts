@@ -7,6 +7,7 @@ import { messagesDispatch } from './functions/messages-dispatch';
 import { cleaningDispatch } from './functions/cleaning-dispatch';
 import { stripeEvent } from './functions/stripe-event';
 import { billingReconcile } from './functions/billing-reconcile';
+import { smsUsageReconcile } from './functions/sms-usage-reconcile';
 import { channexFullSync } from './functions/channex-full-sync';
 import { outboundReviewsDispatch } from './functions/outbound-reviews-dispatch';
 import { outboundReviewsSend } from './functions/outbound-reviews-send';
@@ -29,6 +30,7 @@ export const inngestFunctions = [
   cleaningDispatch,
   stripeEvent,
   billingReconcile,
+  smsUsageReconcile,
   channexFullSync,
   outboundReviewsDispatch,
   outboundReviewsSend,

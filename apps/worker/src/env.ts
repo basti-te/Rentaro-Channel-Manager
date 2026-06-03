@@ -65,6 +65,9 @@ const Env = z.object({
   STRIPE_PRICE_BASE_ANNUAL: z.string().optional().transform((v) => v || undefined),
   STRIPE_PRICE_PROPERTY_MONTHLY: z.string().optional().transform((v) => v || undefined),
   STRIPE_PRICE_PROPERTY_ANNUAL: z.string().optional().transform((v) => v || undefined),
+  /** Usage-based SMS add-on: metered Price id + Billing Meter event name. */
+  STRIPE_PRICE_SMS_METERED: z.string().optional().transform((v) => v || undefined),
+  STRIPE_SMS_METER_EVENT_NAME: z.string().optional().transform((v) => v || undefined),
 });
 
 const parsed = Env.safeParse(process.env);

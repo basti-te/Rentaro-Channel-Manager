@@ -143,3 +143,40 @@ The project-owner's existing tenant is `billingExempt = true` (set in
 migration `0013`). It bypasses the gate entirely and never sees the
 plan picker or lockout. Toggle the flag manually if you ever onboard a
 comped account.
+
+## SMS add-on (usage-based metering)
+
+SMS is an **opt-in add-on**, off by default for new tenants
+(`tenants.sms_enabled`), toggled at `/settings` → "SMS-Versand". When on, a
+tenant is billed **per SMS segment** via a Stripe **Billing Meter**. Until the
+Stripe pieces below exist, the metering job is a no-op (SMS still send for
+opted-in tenants — they just aren't billed yet).
+
+### One-time Stripe setup
+
+1. **Create a Meter** (Dashboard → Billing → Meters, or API):
+   - Event name: e.g. `sms_segments` (this is `STRIPE_SMS_METER_EVENT_NAME`).
+   - Aggregation: **Sum** of the event `value`.
+   - Customer mapping: default (`stripe_customer_id`); payload value key:
+     default (`value`). The worker sends exactly these keys.
+2. **Create a metered Price** linked to that Meter (a recurring usage Price on
+   the same product as the base plan), priced per segment (e.g. your Twilio
+   cost + margin). Its id is `STRIPE_PRICE_SMS_METERED`.
+3. Set both in the **worker** env:
+   ```
+   STRIPE_SMS_METER_EVENT_NAME=sms_segments
+   STRIPE_PRICE_SMS_METERED=price_...
+   ```
+
+### How it bills
+
+- `sms-usage-reconcile` runs daily (03:30) — or on demand via the
+  `sms-usage/reconcile.now` Inngest event.
+- For each SMS-on, non-exempt tenant with an active subscription it sums the
+  segments of every SMS sent since `tenants.sms_usage_reported_through`
+  (guest `messages` + `cleaning_messages`), reports one meter event, attaches
+  the metered Price to the subscription (idempotent), then advances the
+  watermark.
+- **First run baselines** the watermark to "now" without billing history, so
+  switching metering on never retro-charges past SMS. Segment counts follow
+  Twilio's GSM-7/UCS-2 rules (`smsSegments`).

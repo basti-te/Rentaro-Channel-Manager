@@ -62,7 +62,7 @@ export {
   type TriggerAnchor,
   type DispatchDisposition,
 } from './services/triggers';
-export { sendSms, isTwilioConfigured, type TwilioConfig } from './services/twilio';
+export { sendSms, smsSegments, isTwilioConfigured, type TwilioConfig } from './services/twilio';
 export {
   sendEmail,
   isEmailConfigured,
@@ -100,6 +100,8 @@ export {
   verifyStripeWebhook,
   syncSubscriptionFromStripe,
   reconcileQuantity,
+  ensureSmsMeteredItem,
+  reportSmsMeterEvent,
 } from './services/stripe';
 export { resolveAccess } from './services/plan-guard';
 

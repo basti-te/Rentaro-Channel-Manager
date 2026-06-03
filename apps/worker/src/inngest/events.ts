@@ -92,6 +92,16 @@ export type Events = {
   };
 
   /**
+   * Run the daily SMS-usage reconcile immediately (sum sent SMS segments per
+   * tenant and report to the Stripe Billing Meter), in addition to its cron.
+   */
+  'sms-usage/reconcile.now': {
+    data: {
+      reason?: string;
+    };
+  };
+
+  /**
    * Full Sync — push 500 days of availability + rates/restrictions for one
    * property in 2 Channex calls. One event per property; the handler is
    * throttled so a "sync all" (many events) paces itself under the rate
