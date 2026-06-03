@@ -15,6 +15,7 @@ import { Card } from '../components/ui/Card';
 import { SectionCard } from '../components/ui/SectionCard';
 import { Switch } from '../components/ui/Switch';
 import { Skeleton } from '../components/ui/Skeleton';
+import { Link } from '@tanstack/react-router';
 import { trpc } from '../lib/trpc';
 
 import {
@@ -373,6 +374,14 @@ function SmsEnableSection({
           onChange={(next) => save.mutate({ smsEnabled: next })}
           aria-label="SMS-Versand aktivieren"
         />
+      </div>
+      <div className="mt-3 border-t border-line pt-3">
+        <Link
+          to="/sms-laender"
+          className="text-[13px] font-medium text-brand hover:underline"
+        >
+          SMS-Länder &amp; Preise verwalten →
+        </Link>
       </div>
     </SectionCard>
   );
