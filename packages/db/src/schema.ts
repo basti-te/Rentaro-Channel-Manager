@@ -165,6 +165,13 @@ export const tenants = pgTable('tenants', {
   smsSenderId: text('sms_sender_id'),
 
   /**
+   * SMS add-on opt-in. When false, ALL SMS (cleaning reminders + guest
+   * messages) are skipped — SMS is billed by usage and is OFF by default for
+   * new tenants. Existing tenants are backfilled to true in the migration.
+   */
+  smsEnabled: boolean('sms_enabled').notNull().default(false),
+
+  /**
    * Operator e-mail notifications (transactional, via Resend). NULL/empty
    * `notifyEmail` = notifications disabled entirely (nowhere to send). When
    * set, each `notify*` flag gates one event class. Sent immediately per

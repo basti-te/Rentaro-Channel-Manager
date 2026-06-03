@@ -26,6 +26,7 @@ export const settingsRouter = router({
           name: tenants.name,
           rateSource: tenants.rateSource,
           smsSenderId: tenants.smsSenderId,
+          smsEnabled: tenants.smsEnabled,
           defaultCurrency: tenants.defaultCurrency,
           defaultTimezone: tenants.defaultTimezone,
           defaultCityTaxRateBp: tenants.defaultCityTaxRateBp,
@@ -177,6 +178,20 @@ export const settingsRouter = router({
         .returning({ smsSenderId: tenants.smsSenderId });
       if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
       return { smsSenderId: row.smsSenderId };
+    }),
+
+  /** Opt-in toggle for the SMS add-on. Off = no SMS sent for this tenant
+   *  (cleaning reminders + guest SMS are skipped). Billed by usage when on. */
+  setSmsEnabled: adminProcedure
+    .input(z.object({ smsEnabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await ctx.db
+        .update(tenants)
+        .set({ smsEnabled: input.smsEnabled, updatedAt: new Date() })
+        .where(eq(tenants.id, ctx.tenantId!))
+        .returning({ smsEnabled: tenants.smsEnabled });
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
+      return { smsEnabled: row.smsEnabled };
     }),
 
   /**

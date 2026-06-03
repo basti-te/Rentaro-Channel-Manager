@@ -67,6 +67,7 @@ async function dispatch(): Promise<CleaningDispatchResult> {
       trigger: cleaningRules.trigger,
       tz: tenants.defaultTimezone,
       smsSenderId: tenants.smsSenderId,
+      smsEnabled: tenants.smsEnabled,
     })
     .from(cleaningRules)
     .innerJoin(tenants, eq(tenants.id, cleaningRules.tenantId))
@@ -92,6 +93,7 @@ async function dispatch(): Promise<CleaningDispatchResult> {
 
   for (const r of rules) {
     if (claimed >= MAX_PER_RUN) break;
+    if (!r.smsEnabled) continue; // SMS add-on not enabled for this tenant
 
     const scoped = new Set(
       (

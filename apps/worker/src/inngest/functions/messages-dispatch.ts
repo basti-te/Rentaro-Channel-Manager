@@ -78,6 +78,7 @@ async function dispatch(): Promise<DispatchResult> {
       body: messageTemplates.body,
       tz: tenants.defaultTimezone,
       smsSenderId: tenants.smsSenderId,
+      smsEnabled: tenants.smsEnabled,
     })
     .from(messageTemplates)
     .innerJoin(tenants, eq(tenants.id, messageTemplates.tenantId))
@@ -97,6 +98,7 @@ async function dispatch(): Promise<DispatchResult> {
 
   for (const t of tpls) {
     if (claimed >= MAX_PER_RUN) break;
+    if (t.channel === 'sms' && !t.smsEnabled) continue; // SMS add-on off for tenant
 
     // Apartment scope (explicit allow-list) + per-booking overrides.
     const scoped = new Set(

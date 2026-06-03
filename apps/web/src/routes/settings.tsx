@@ -13,6 +13,7 @@ import { Input } from '../components/ui/Input';
 import { Label } from '../components/ui/Label';
 import { Card } from '../components/ui/Card';
 import { SectionCard } from '../components/ui/SectionCard';
+import { Switch } from '../components/ui/Switch';
 import { Skeleton } from '../components/ui/Skeleton';
 import { trpc } from '../lib/trpc';
 
@@ -68,6 +69,11 @@ export function SettingsPage() {
             />
             <RateSourceSection
               value={tenantQ.data.rateSource}
+              disabled={!isAdmin}
+              onSaved={() => utils.settings.tenant.invalidate()}
+            />
+            <SmsEnableSection
+              value={tenantQ.data.smsEnabled}
               disabled={!isAdmin}
               onSaved={() => utils.settings.tenant.invalidate()}
             />
@@ -332,6 +338,42 @@ function RateSourceSection({
           </p>
         </div>
       )}
+    </SectionCard>
+  );
+}
+
+function SmsEnableSection({
+  value,
+  disabled,
+  onSaved,
+}: {
+  value: boolean;
+  disabled: boolean;
+  onSaved: () => void;
+}) {
+  const save = trpc.settings.setSmsEnabled.useMutation({
+    onSuccess: () => {
+      onSaved();
+      toast.success('Gespeichert');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <SectionCard
+      title="SMS-Versand"
+      desc="Kostenpflichtiges Add-on — SMS (Reinigungs- & Gast-Nachrichten) werden nach Verbrauch abgerechnet. Ist es aus, werden keine SMS gesendet (E-Mail/Kalender bleiben unberührt)."
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[14px] text-ink">
+          {value ? 'SMS aktiviert' : 'SMS deaktiviert'}
+        </span>
+        <Switch
+          checked={value}
+          disabled={disabled || save.isPending}
+          onChange={(next) => save.mutate({ smsEnabled: next })}
+          aria-label="SMS-Versand aktivieren"
+        />
+      </div>
     </SectionCard>
   );
 }

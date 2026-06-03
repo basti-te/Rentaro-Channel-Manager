@@ -290,11 +290,17 @@ export const messageTemplatesRouter = router({
       // Per-tenant sender wins; fall back to the account-wide env default.
       const tenantRow = (
         await ctx.db
-          .select({ smsSenderId: tenants.smsSenderId })
+          .select({ smsSenderId: tenants.smsSenderId, smsEnabled: tenants.smsEnabled })
           .from(tenants)
           .where(eq(tenants.id, ctx.tenantId!))
           .limit(1)
       )[0];
+      if (!tenantRow?.smsEnabled) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'SMS-Versand ist für diesen Workspace nicht aktiviert.',
+        });
+      }
       const from = tenantRow?.smsSenderId || ctx.env.TWILIO_FROM;
 
       const result = await sendSms(
