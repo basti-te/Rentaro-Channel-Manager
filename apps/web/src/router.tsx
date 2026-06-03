@@ -26,6 +26,7 @@ import { TeammatesPage } from './routes/teammates';
 import { ReviewsPage } from './routes/reviews';
 import { ListingLinksPage } from './routes/listing-links';
 import { SmsCountriesPage } from './routes/sms-countries';
+import { StatistikPage } from './routes/statistik';
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -165,6 +166,12 @@ const smsCountriesRoute = createRoute({
   component: SmsCountriesPage,
 });
 
+const statistikRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/statistik',
+  component: StatistikPage,
+});
+
 const routeTree = rootRoute.addChildren([
   landingRoute,
   loginRoute,
@@ -186,6 +193,7 @@ const routeTree = rootRoute.addChildren([
     reviewsRoute,
     listingLinksRoute,
     smsCountriesRoute,
+    statistikRoute,
   ]),
 ]);
 

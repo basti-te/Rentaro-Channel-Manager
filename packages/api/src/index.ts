@@ -7,6 +7,7 @@ import { syncRouter } from './routers/sync';
 import { ratesRouter } from './routers/rates';
 import { settingsRouter } from './routers/settings';
 import { smsRouter } from './routers/sms';
+import { analyticsRouter } from './routers/analytics';
 import { messagesRouter } from './routers/messages';
 import { messageTemplatesRouter } from './routers/message-templates';
 import { messageVariablesRouter } from './routers/message-variables';
@@ -28,6 +29,7 @@ export const appRouter = router({
   rates: ratesRouter,
   settings: settingsRouter,
   sms: smsRouter,
+  analytics: analyticsRouter,
   messages: messagesRouter,
   messageTemplates: messageTemplatesRouter,
   messageVariables: messageVariablesRouter,

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import {
+  BarChart3,
   Building2,
   Calendar,
   LayoutGrid,
@@ -40,6 +41,7 @@ const NAV: NavItem[] = [
   { to: '/channels',   label: 'Kanäle',          icon: Plug },
   { to: '/listing-links', label: 'Listing-Links', icon: Share2 },
   { to: '/overview',   label: 'Overview',        icon: LayoutGrid },
+  { to: '/statistik',  label: 'Statistik',       icon: BarChart3 },
   { to: '/messages',   label: 'Messages',        icon: MessageSquare },
   { to: '/cleaning',   label: 'Cleaning',        icon: SprayCan },
   { to: '/reviews',    label: 'Bewertungen',     icon: Star },
