@@ -7,6 +7,8 @@
  * Credentials are optional in the environment; callers must handle the
  * `not_configured` outcome and surface it to the user instead of crashing.
  */
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
+
 export interface TwilioConfig {
   accountSid?: string;
   authToken?: string;
@@ -102,4 +104,19 @@ export function smsSegments(body: string): number {
     0,
   );
   return units <= 70 ? 1 : Math.ceil(units / 67);
+}
+
+/**
+ * Resolve the ISO-3166 alpha-2 country of an E.164 phone number
+ * (e.g. '+49 170…' → 'DE'). Returns null when it can't be parsed — callers
+ * treat null as "not allowed", so unknown destinations are never silently
+ * sent or billed.
+ */
+export function resolveSmsCountry(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  try {
+    return parsePhoneNumberFromString(phone)?.country ?? null;
+  } catch {
+    return null;
+  }
 }

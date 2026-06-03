@@ -888,6 +888,25 @@ export const cleaningRuleTeammates = pgTable(
 export type CleaningRuleTeammate = typeof cleaningRuleTeammates.$inferSelect;
 
 /**
+ * Per-tenant SMS country allow-list. A row = "this tenant may send SMS to this
+ * ISO-3166 alpha-2 country". Empty set = no SMS allowed anywhere. Must stay a
+ * subset of the Twilio account's Geo Permissions (the operator's hard ceiling).
+ */
+export const tenantSmsCountries = pgTable(
+  'tenant_sms_countries',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    countryCode: text('country_code').notNull(), // ISO-3166 alpha-2, e.g. 'DE'
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.tenantId, t.countryCode] }),
+  }),
+);
+export type TenantSmsCountry = typeof tenantSmsCountries.$inferSelect;
+
+/**
  * A dispatched (or due) cleaning SMS. Dedupe is the unique index on
  * (rule_id, booking_id, teammate_id) — each rule fires at most once per
  * booking per teammate, regardless of cron overlap. The dispatch cron

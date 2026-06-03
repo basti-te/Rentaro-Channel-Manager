@@ -6,6 +6,7 @@ import { bookingsRouter } from './routers/bookings';
 import { syncRouter } from './routers/sync';
 import { ratesRouter } from './routers/rates';
 import { settingsRouter } from './routers/settings';
+import { smsRouter } from './routers/sms';
 import { messagesRouter } from './routers/messages';
 import { messageTemplatesRouter } from './routers/message-templates';
 import { messageVariablesRouter } from './routers/message-variables';
@@ -26,6 +27,7 @@ export const appRouter = router({
   sync: syncRouter,
   rates: ratesRouter,
   settings: settingsRouter,
+  sms: smsRouter,
   messages: messagesRouter,
   messageTemplates: messageTemplatesRouter,
   messageVariables: messageVariablesRouter,
@@ -62,7 +64,20 @@ export {
   type TriggerAnchor,
   type DispatchDisposition,
 } from './services/triggers';
-export { sendSms, smsSegments, isTwilioConfigured, type TwilioConfig } from './services/twilio';
+export {
+  sendSms,
+  smsSegments,
+  resolveSmsCountry,
+  isTwilioConfigured,
+  type TwilioConfig,
+} from './services/twilio';
+export {
+  SMS_RATES,
+  SMS_MARKUP,
+  SMS_FX_USD_EUR,
+  smsCustomerPriceMinor,
+  type SmsRate,
+} from './services/sms-rates';
 export {
   sendEmail,
   isEmailConfigured,

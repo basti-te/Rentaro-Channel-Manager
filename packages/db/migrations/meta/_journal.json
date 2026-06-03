@@ -169,6 +169,13 @@
       "when": 1780486497942,
       "tag": "0023_supreme_gravity",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780491765931,
+      "tag": "0024_redundant_onslaught",
+      "breakpoints": true
     }
   ]
 }
