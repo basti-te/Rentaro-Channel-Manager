@@ -11,13 +11,15 @@
  *   /landing/hero.jpg   /landing/guests.jpg   /landing/operator.jpg
  *   /landing/channels.jpg   /landing/key.jpg
  */
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowRight,
+  BarChart3,
   Building2,
   Calendar as CalendarIcon,
   Check,
+  Coins,
   Cog,
   Globe2,
   MessageSquare,
@@ -25,6 +27,7 @@ import {
   ShieldCheck,
   Sparkles,
   SprayCan,
+  Star,
   TrendingUp,
   Users,
   type LucideIcon,
@@ -33,6 +36,7 @@ import { cn } from '@cm/ui';
 
 import { Brand } from '../components/Brand';
 import { Button } from '../components/ui/Button';
+import { Gauge, Sparkline, ComboChart, CHART_COLORS, type ComboPoint } from '../components/charts';
 import { useAuth } from '../lib/auth';
 
 export function LandingPage() {
@@ -50,6 +54,7 @@ export function LandingPage() {
       <Hero />
       <TrustStrip />
       <WhyRentaro />
+      <StatistikShowcase />
       <Features />
       <ComingSoon />
       <Pricing />
@@ -123,9 +128,10 @@ function Hero() {
           </h1>
           <p className="mt-5 text-[16px] sm:text-[17px] leading-[1.7] text-ink-soft max-w-prose">
             Rentaro hält Booking.com, Airbnb &amp; Vrbo in einem einzigen Kalender
-            synchron. Verschickt deine Welcome-Nachrichten automatisch. Sagt der
-            Putzkraft per&nbsp;SMS Bescheid, wann sie loslegen kann. Schlank
-            gebaut, fair bepreist — gemacht für Vermieter, nicht für Hotels.
+            synchron, verschickt Gast-Nachrichten automatisch, sagt der Putzkraft
+            per&nbsp;SMS Bescheid — und zeigt dir auf einen Blick, was deine
+            Wohnungen verdienen. Schlank gebaut, fair bepreist — für Vermieter,
+            nicht für Hotels.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link to="/login">
@@ -297,6 +303,107 @@ function BulletPoint({
   );
 }
 
+// ─── Statistik showcase (built from the real chart components) ──────────────
+
+function StatistikShowcase() {
+  const points = useMemo<ComboPoint[]>(
+    () =>
+      Array.from({ length: 30 }, (_, i) => {
+        const rev = 540 + 430 * (Math.sin(i / 3.2) * 0.5 + 0.5) + 110 * Math.sin(i / 1.4);
+        const occ = 55 + 42 * (Math.sin(i / 3.2 + 0.7) * 0.5 + 0.5);
+        return {
+          label: `${i + 1}`,
+          full: `Tag ${i + 1}`,
+          revenueCents: Math.round(rev) * 100,
+          occPct: Math.min(100, Math.round(occ)),
+        };
+      }),
+    [],
+  );
+  const money = (c: number) => `€${Math.round(c / 100).toLocaleString('de-DE')}`;
+  const moneyAxis = (c: number) => {
+    const v = c / 100;
+    return v >= 1000 ? `€${(v / 1000).toFixed(1)}k` : `€${Math.round(v)}`;
+  };
+  const revSpark = points.map((p) => p.revenueCents);
+  const occSpark = points.map((p) => p.occPct);
+  const adrSpark = points.map((_, i) => 56 + Math.round(8 * Math.sin(i / 2.5)));
+  const bookSpark = points.map((_, i) => 2 + Math.round(2 * (Math.sin(i / 2) * 0.5 + 0.5)));
+
+  return (
+    <section className="py-20 sm:py-28 bg-surface border-y border-line/70">
+      <div className="mx-auto max-w-6xl px-6 lg:px-10">
+        <div className="max-w-2xl">
+          <div className="text-[11.5px] uppercase tracking-[0.18em] text-brand font-medium">
+            Neu · Statistik
+          </div>
+          <h2 className="display mt-3 text-[34px] sm:text-[42px] leading-[1.08] tracking-[-0.02em] text-ink">
+            Sieh auf einen Blick, was deine Wohnungen verdienen.
+          </h2>
+          <p className="mt-5 text-[15.5px] leading-[1.7] text-ink-soft">
+            Umsatz, Auslastung, ADR, RevPAR, Stornoquote und der Kanal-Mix — über
+            jeden Zeitraum, mit Vergleich zur Vorperiode. Netto und pro
+            Übernachtung verbucht, damit die Zahlen stimmen.
+          </p>
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-line bg-canvas p-2.5 shadow-lg ring-1 ring-line/50">
+          <div className="flex items-center gap-1.5 px-3 py-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F57]" />
+            <span className="h-2.5 w-2.5 rounded-full bg-[#FEBC2E]" />
+            <span className="h-2.5 w-2.5 rounded-full bg-[#28C840]" />
+            <span className="ml-3 text-[11px] text-muted">rentaro.cloud/statistik</span>
+          </div>
+          <div className="rounded-xl border border-line bg-surface p-4 sm:p-5">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2 rounded-lg border border-line bg-canvas p-4">
+                <div className="text-[12px] font-semibold text-ink">Umsatz &amp; Auslastung</div>
+                <div className="mt-1">
+                  <ComboChart points={points} money={money} moneyAxis={moneyAxis} />
+                </div>
+              </div>
+              <div className="flex flex-col items-center justify-center rounded-lg border border-line bg-canvas p-4">
+                <Gauge pct={87} />
+                <p className="mt-1 text-center text-[11px] text-whisper">
+                  Auslastung · letzte 30 Tage
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <MiniStat label="Umsatz (netto)" value="28.705 €" spark={revSpark} />
+              <MiniStat label="Auslastung" value="87 %" spark={occSpark} color={CHART_COLORS.positive} />
+              <MiniStat label="ADR" value="60 €" spark={adrSpark} />
+              <MiniStat label="Buchungen" value="98" spark={bookSpark} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  spark,
+  color = CHART_COLORS.brand,
+}: {
+  label: string;
+  value: string;
+  spark: number[];
+  color?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-line bg-canvas p-3">
+      <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
+      <div className="num mt-1 text-[18px] leading-none text-ink">{value}</div>
+      <div className="mt-1.5">
+        <Sparkline values={spark} color={color} height={28} />
+      </div>
+    </div>
+  );
+}
+
 // ─── Features grid ──────────────────────────────────────────────────────────
 
 function Features() {
@@ -308,7 +415,7 @@ function Features() {
             Was schon drin ist
           </div>
           <h2 className="display mt-3 text-[34px] sm:text-[42px] leading-[1.08] tracking-[-0.02em] text-ink">
-            Alle Basics, scharf umgesetzt.
+            Vom Kalender bis zur Auswertung.
           </h2>
           <p className="mt-5 text-[15.5px] leading-[1.7] text-ink-soft">
             Keine Sektion ist halbgar. Wir haben uns für weniger Features mit
@@ -320,17 +427,32 @@ function Features() {
           <FeatureCard
             icon={Globe2}
             title="Channel-Sync"
-            text="Booking.com, Airbnb, Vrbo, Expedia — ein einziger Quellzustand, sekundengenau verteilt. Verfügbarkeit, Preise, Restriktionen."
+            text="Booking.com, Airbnb, Vrbo, Expedia &amp; 30+ — ein Quellzustand, sekundengenau verteilt: Verfügbarkeit, Preise, Restriktionen."
           />
           <FeatureCard
             icon={MessageSquare}
             title="Auto-Gastnachrichten"
-            text="Pro Apartment einzelne Templates. Variablen wie {Gastname}, {Check-in-Zeit}, {WLAN}. Automatischer Trigger relativ zu Check-in/out."
+            text="Vorlagen pro Apartment &amp; Kanal mit Variablen. Trigger relativ zu Reservierung, Check-in/-out — von „sofort bei Buchung&ldquo; bis „1 Tag vorher&ldquo;. Pro Buchung siehst du, was geplant/gesendet ist — mit Vorschau und „Jetzt senden&ldquo;."
+          />
+          <FeatureCard
+            icon={BarChart3}
+            title="Statistik &amp; Auswertungen"
+            text="Umsatz, Auslastung, ADR, RevPAR, Stornoquote, Kanal-Mix und Top-Apartments — über jeden Zeitraum, mit Vorperioden-Vergleich."
           />
           <FeatureCard
             icon={SprayCan}
-            title="Putzkraft-SMS"
-            text="Direkter SMS-Versand an deine Putzkräfte per Twilio. Regeln pro Apartment. Mehrere Teammates."
+            title="Putz- &amp; Team-Workflows"
+            text="Reinigungs-Reminder per SMS, pro Lauf gebündelt (eine SMS je Kraft). Mehrere Teammates pro Apartment. Teilbarer Reinigungs-Kalender-Link fürs Handy der Putzkraft."
+          />
+          <FeatureCard
+            icon={Coins}
+            title="Faire SMS-Abrechnung"
+            text="SMS pro Land freischalten, Endkundenpreis transparent je Segment. Nicht freigeschaltete Länder werden sauber übersprungen — keine Überraschungskosten."
+          />
+          <FeatureCard
+            icon={Star}
+            title="Bewertungs-Automatik"
+            text="Automatische Bewertungs-Anfrage nach dem Check-out — pro Buchung abschaltbar für schwierige Gäste."
           />
           <FeatureCard
             icon={TrendingUp}
@@ -339,8 +461,8 @@ function Features() {
           />
           <FeatureCard
             icon={Building2}
-            title="Multi-Apartment"
-            text="1 bis 50 Wohnungen, beliebig nach Gruppen sortiert. Drag-and-drop Reihenfolge. Pro Wohnung eigene Defaults und Währung."
+            title="Multi-Apartment &amp; Listing-Links"
+            text="1–50 Wohnungen, nach Gebäuden/Gruppen sortiert, Drag-and-drop. Pro Wohnung eigene Defaults &amp; Währung — plus Airbnb-/Booking-Links zum schnellen Teilen per WhatsApp."
           />
           <FeatureCard
             icon={ShieldCheck}
@@ -490,7 +612,8 @@ function Pricing() {
           </h2>
           <p className="mt-5 text-[15.5px] leading-[1.7] text-ink-soft">
             Eine Basis-Gebühr plus ein kleiner Betrag pro Apartment. Keine
-            versteckten Provisionen, keine Pro-Buchung-Anteile. Jährlich zahlen
+            versteckten Provisionen, keine Pro-Buchung-Anteile. SMS sind ein
+            optionales Add-on, fair pro Segment abgerechnet. Jährlich zahlen
             spart 10 %.
           </p>
         </div>
@@ -583,8 +706,9 @@ function PricingCard({
 
       <ul className="mt-6 space-y-2.5 text-[13.5px] text-ink">
         <PriceFeature>Channel-Sync alle Plattformen</PriceFeature>
-        <PriceFeature>Auto-Gastnachrichten</PriceFeature>
-        <PriceFeature>Putzkraft-SMS via Twilio</PriceFeature>
+        <PriceFeature>Auto-Gastnachrichten &amp; Bewertungen</PriceFeature>
+        <PriceFeature>Statistik &amp; Auswertungen</PriceFeature>
+        <PriceFeature>Putz- &amp; Team-Workflows</PriceFeature>
         <PriceFeature>PriceLabs-Anbindung</PriceFeature>
         <PriceFeature>Unbegrenzte Buchungen</PriceFeature>
         <PriceFeature>Support per E-Mail</PriceFeature>
