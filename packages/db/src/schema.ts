@@ -181,6 +181,18 @@ export const tenants = pgTable('tenants', {
   }),
 
   /**
+   * AI guest-reply add-on (opt-in, usage-billed like SMS). When false, no AI
+   * drafts or replies are generated. `aiAutoSend` lets confident replies go out
+   * without human approval (only meaningful when aiRepliesEnabled). The
+   * watermark drives usage-based Stripe metering.
+   */
+  aiRepliesEnabled: boolean('ai_replies_enabled').notNull().default(false),
+  aiAutoSend: boolean('ai_auto_send').notNull().default(false),
+  aiUsageReportedThrough: timestamp('ai_usage_reported_through', {
+    withTimezone: true,
+  }),
+
+  /**
    * Operator e-mail notifications (transactional, via Resend). NULL/empty
    * `notifyEmail` = notifications disabled entirely (nowhere to send). When
    * set, each `notify*` flag gates one event class. Sent immediately per
@@ -367,6 +379,11 @@ export const properties = pgTable(
      *  "Listing-Links" page to copy & share (e.g. via WhatsApp). NULL = unset. */
     airbnbListingUrl: text('airbnb_listing_url'),
     bookingListingUrl: text('booking_listing_url'),
+
+    /** Free-text apartment knowledge for the AI guest-reply assistant — WLAN,
+     *  Türcode, Anfahrt, Hausregeln, Tipps. The bot answers only from this
+     *  (+ custom vars + booking facts). NULL = unset. */
+    aiKnowledge: text('ai_knowledge'),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -905,6 +922,47 @@ export const tenantSmsCountries = pgTable(
   }),
 );
 export type TenantSmsCountry = typeof tenantSmsCountries.$inferSelect;
+
+/**
+ * Guest conversation messages (Airbnb / Booking.com OTA threads), ingested from
+ * Channex for the in-app inbox + AI assistant. Inbound guest messages are
+ * upserted (dedup by channex_message_id). Outbound rows model AI drafts
+ * (status='draft', sender='ai') awaiting approval, and sent host/AI replies.
+ *   direction: 'inbound' | 'outbound'
+ *   sender:    'guest' | 'host' | 'ai'
+ *   status:    'received' | 'draft' | 'sent' | 'failed' | 'dismissed'
+ */
+export const guestMessages = pgTable(
+  'guest_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'cascade' }),
+    /** Channex message id — set for ingested OTA messages (dedup). NULL for our
+     *  own drafts/sends until reconciled. */
+    channexMessageId: text('channex_message_id'),
+    direction: text('direction').notNull(),
+    sender: text('sender').notNull(),
+    body: text('body').notNull(),
+    status: text('status').notNull().default('received'),
+    aiGenerated: boolean('ai_generated').notNull().default(false),
+    error: text('error'),
+    /** Channex `inserted_at` for ingested messages (OTA-side timestamp). */
+    otaCreatedAt: timestamp('ota_created_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byBooking: index('guest_messages_booking_idx').on(t.bookingId),
+    byTenant: index('guest_messages_tenant_idx').on(t.tenantId),
+    uniqChannex: uniqueIndex('guest_messages_channex_uq').on(t.channexMessageId),
+  }),
+);
+export type GuestMessage = typeof guestMessages.$inferSelect;
 
 /**
  * A dispatched (or due) cleaning SMS. Dedupe is the unique index on

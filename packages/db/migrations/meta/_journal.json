@@ -176,6 +176,13 @@
       "when": 1780491765931,
       "tag": "0024_redundant_onslaught",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780951126386,
+      "tag": "0025_modern_daredevil",
+      "breakpoints": true
     }
   ]
 }

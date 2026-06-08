@@ -2,10 +2,12 @@ import { z } from 'zod';
 import type { ChannexHttpClient } from '../client';
 import { envelope } from '../schemas/common';
 import { Booking, BookingCreate, BookingRevision } from '../schemas/booking';
+import { ChannexMessage } from '../schemas/message';
 
 const ListResponse = envelope(z.array(Booking));
 const SingleResponse = envelope(Booking);
 const RevisionListResponse = envelope(z.array(BookingRevision));
+const MessageListResponse = envelope(z.array(ChannexMessage));
 
 /** Expand [arrival, departure) into one entry per night with the given rate. */
 function buildDaysMap(arrival: string, departure: string, rate: string): Record<string, string> {
@@ -85,6 +87,20 @@ export class BookingsAPI {
       body: { message: { message } },
       retries: 0, // not idempotent — never replay a guest message
     });
+  }
+
+  /**
+   * List the full message thread (inbound + outbound) of a booking. Used to
+   * ingest guest messages for the inbox / AI assistant. Webhook-driven +
+   * re-fetched (webhooks are triggers, not the source of truth).
+   * Verified: GET /bookings/{id}/messages → { data: [ChannexMessage] }.
+   */
+  async listMessages(channexBookingId: string): Promise<ChannexMessage[]> {
+    const raw = await this.http.request({
+      method: 'GET',
+      path: `/bookings/${channexBookingId}/messages`,
+    });
+    return MessageListResponse.parse(raw).data ?? [];
   }
 
   /**
