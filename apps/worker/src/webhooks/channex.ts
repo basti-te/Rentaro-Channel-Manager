@@ -97,5 +97,17 @@ channexWebhook.post('/:secret', async (c) => {
     });
   }
 
+  // ── 3. Sync the OTA message thread on a message event ──────────────
+  if (event === 'message') {
+    const hint =
+      payload && typeof (payload as Record<string, unknown>).booking_id === 'string'
+        ? ((payload as Record<string, unknown>).booking_id as string)
+        : undefined;
+    await inngest.send({
+      name: 'guest-messages/sync',
+      data: { channexBookingId: hint, reason: 'webhook:message' },
+    });
+  }
+
   return c.json({ received: true });
 });

@@ -102,6 +102,31 @@ export type Events = {
   };
 
   /**
+   * Sync a booking's OTA message thread (or the active-window bookings) from
+   * Channex into guest_messages. Fired by the Channex `message` webhook (with a
+   * booking hint) and by a cron safety net. Re-fetches the thread — webhooks are
+   * triggers, not the source of truth.
+   */
+  'guest-messages/sync': {
+    data: {
+      channexBookingId?: string;
+      reason?: string;
+    };
+  };
+
+  /**
+   * A new inbound guest message was ingested. Phase 3 (AI assistant) hooks here
+   * to draft a reply.
+   */
+  'guest-messages/incoming': {
+    data: {
+      guestMessageId: string;
+      bookingId: string;
+      tenantId: string;
+    };
+  };
+
+  /**
    * Full Sync — push 500 days of availability + rates/restrictions for one
    * property in 2 Channex calls. One event per property; the handler is
    * throttled so a "sync all" (many events) paces itself under the rate
