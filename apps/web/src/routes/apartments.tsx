@@ -766,8 +766,10 @@ function PropertyRowItem({
 
       {showEdit && (
         <EditApartmentDialog
+          propertyId={property.id}
           currentName={property.name}
           currentGroupId={property.groupId ?? null}
+          currentAiKnowledge={property.aiKnowledge ?? ''}
           groups={groups}
           pending={editMut.isPending}
           onClose={() => setShowEdit(false)}
@@ -796,22 +798,35 @@ function PropertyRowItem({
  * side is left as-is — a UI label/group change never triggers a Channex call.
  */
 function EditApartmentDialog({
+  propertyId,
   currentName,
   currentGroupId,
+  currentAiKnowledge,
   groups,
   pending,
   onClose,
   onSubmit,
 }: {
+  propertyId: string;
   currentName: string;
   currentGroupId: string | null;
+  currentAiKnowledge: string;
   groups: GroupRow[];
   pending: boolean;
   onClose: () => void;
   onSubmit: (name: string, groupId: string | null) => void;
 }) {
+  const utils = trpc.useUtils();
   const [name, setName] = useState(currentName);
   const [groupId, setGroupId] = useState<string>(currentGroupId ?? '');
+  const [aiKnowledge, setAiKnowledge] = useState(currentAiKnowledge);
+  const aiSave = trpc.properties.setAiKnowledge.useMutation({
+    onSuccess: () => {
+      toast.success('KI-Wissen gespeichert');
+      void utils.properties.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -884,6 +899,33 @@ function EditApartmentDialog({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-ai">KI-Wissen / Hausinfo</Label>
+            <textarea
+              id="edit-ai"
+              value={aiKnowledge}
+              onChange={(e) => setAiKnowledge(e.target.value)}
+              rows={5}
+              maxLength={8000}
+              placeholder="WLAN, Türcode, Anfahrt, Hausregeln, Tipps … — die KI beantwortet Gastfragen ausschließlich anhand dieser Infos."
+              className="w-full rounded-md border border-line bg-surface px-3 py-2 text-[13px] leading-relaxed text-ink focus:border-ink focus:outline-none transition-colors resize-y"
+            />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] text-whisper">
+                Grundlage für die KI-Gastantworten dieses Apartments.
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                loading={aiSave.isPending}
+                disabled={aiKnowledge === currentAiKnowledge || aiSave.isPending}
+                onClick={() => aiSave.mutate({ id: propertyId, aiKnowledge })}
+              >
+                KI-Wissen speichern
+              </Button>
+            </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>

@@ -83,6 +83,12 @@ export function SettingsPage() {
               disabled={!isAdmin}
               onSaved={() => utils.settings.tenant.invalidate()}
             />
+            <AiRepliesSection
+              repliesEnabled={tenantQ.data.aiRepliesEnabled}
+              autoSend={tenantQ.data.aiAutoSend}
+              disabled={!isAdmin}
+              onSaved={() => utils.settings.tenant.invalidate()}
+            />
             <BillingCard context="settings" />
           </>
         )}
@@ -383,6 +389,64 @@ function SmsEnableSection({
           SMS-Länder &amp; Preise verwalten →
         </Link>
       </div>
+    </SectionCard>
+  );
+}
+
+function AiRepliesSection({
+  repliesEnabled,
+  autoSend,
+  disabled,
+  onSaved,
+}: {
+  repliesEnabled: boolean;
+  autoSend: boolean;
+  disabled: boolean;
+  onSaved: () => void;
+}) {
+  const save = trpc.settings.setAiReplies.useMutation({
+    onSuccess: () => {
+      onSaved();
+      toast.success('Gespeichert');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <SectionCard
+      title="KI-Gastantworten"
+      desc="Kostenpflichtiges Add-on — die KI entwirft Antworten auf Gast-Nachrichten (Airbnb/Booking) aus dem hinterlegten Apartment-Wissen. Standard: du gibst jede Antwort frei."
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[14px] text-ink">
+          {repliesEnabled ? 'KI-Antworten aktiviert' : 'KI-Antworten deaktiviert'}
+        </span>
+        <Switch
+          checked={repliesEnabled}
+          disabled={disabled || save.isPending}
+          onChange={(next) =>
+            save.mutate({ aiRepliesEnabled: next, aiAutoSend: next ? autoSend : false })
+          }
+          aria-label="KI-Gastantworten aktivieren"
+        />
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3">
+        <span className={cn('text-[14px]', repliesEnabled ? 'text-ink' : 'text-whisper')}>
+          Auto-Send
+          <span className="block text-[11.5px] text-whisper">
+            Antworten ohne Freigabe direkt senden.
+          </span>
+        </span>
+        <Switch
+          checked={autoSend}
+          disabled={disabled || !repliesEnabled || save.isPending}
+          onChange={(next) => save.mutate({ aiRepliesEnabled: repliesEnabled, aiAutoSend: next })}
+          aria-label="Auto-Send aktivieren"
+        />
+      </div>
+      <p className="mt-3 text-[11px] text-whisper">
+        Wissen pro Apartment unter „Apartments → Bearbeiten → KI-Wissen". Entwürfe
+        erscheinen auf der Buchungs-Detailseite.
+      </p>
     </SectionCard>
   );
 }

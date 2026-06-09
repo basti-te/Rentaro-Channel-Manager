@@ -341,6 +341,11 @@ export function BookingDetailSheet({
             <MessagesSection bookingId={booking.id} />
           )}
 
+          {/* Guest chat + AI drafts (guest bookings only) */}
+          {booking.source !== 'block' && (
+            <GuestChatSection bookingId={booking.id} />
+          )}
+
           {/* Auto-review status (guest bookings only) */}
           {booking.source !== 'block' && booking.autoReviewEnabled != null && (
             <Section label="Automatisierung">
@@ -433,6 +438,169 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+const DISPATCH_ROLE_LABEL: Record<string, string> = {
+  cleaner: 'Reinigung',
+  handyman: 'Hausmeister',
+  other: 'Team',
+};
+
+function GuestChatSection({ bookingId }: { bookingId: string }) {
+  const utils = trpc.useUtils();
+  const q = trpc.guestMessages.thread.useQuery({ bookingId });
+  const invalidate = () => utils.guestMessages.thread.invalidate({ bookingId });
+  const approve = trpc.guestMessages.approveDraft.useMutation({
+    onSuccess: () => {
+      void invalidate();
+      toast.success('Gesendet');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const dismiss = trpc.guestMessages.dismissDraft.useMutation({
+    onSuccess: () => void invalidate(),
+    onError: (e) => toast.error(e.message),
+  });
+  const [editing, setEditing] = useState(false);
+  const [draftText, setDraftText] = useState('');
+
+  const messages = q.data?.messages ?? [];
+  const dispatches = q.data?.dispatches ?? [];
+  const convo = messages.filter((m) => m.status !== 'draft' && m.status !== 'dismissed');
+  const draft = messages.find((m) => m.status === 'draft');
+
+  // Nothing ingested yet → don't render the section at all.
+  if (!q.isLoading && convo.length === 0 && !draft && dispatches.length === 0) return null;
+
+  const fmt = (d: string | Date | null) =>
+    d ? format(new Date(d), 'dd.MM. HH:mm', { locale: de }) : '';
+
+  return (
+    <Section label="Gast-Chat (KI)" icon={<MessageSquare className="h-3.5 w-3.5" />}>
+      {q.isLoading ? (
+        <div className="h-16 w-full animate-pulse rounded-lg bg-sunken" />
+      ) : (
+        <>
+          <div className="space-y-2">
+            {convo.map((m) => {
+              const mine = m.direction === 'outbound';
+              return (
+                <div key={m.id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
+                  <div
+                    className={cn(
+                      'max-w-[85%] rounded-lg px-3 py-2 text-[12.5px] leading-relaxed',
+                      mine ? 'bg-brand-soft text-ink' : 'bg-sunken text-ink',
+                    )}
+                  >
+                    {m.sender === 'ai' && (
+                      <span className="mb-0.5 block text-[9.5px] font-medium uppercase tracking-wider text-brand">
+                        KI
+                      </span>
+                    )}
+                    <span className="whitespace-pre-wrap">{m.body}</span>
+                    <span className="mt-1 block text-[10px] text-whisper">
+                      {fmt(m.otaCreatedAt ?? m.createdAt)}
+                      {m.status === 'failed' ? ' · fehlgeschlagen' : ''}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {draft && (
+            <div className="mt-3 rounded-lg border border-brand/30 bg-brand-soft/30 p-3">
+              <div className="text-[9.5px] font-medium uppercase tracking-wider text-brand">
+                KI-Entwurf · zur Freigabe
+              </div>
+              {editing ? (
+                <textarea
+                  value={draftText}
+                  onChange={(e) => setDraftText(e.target.value)}
+                  rows={4}
+                  maxLength={4000}
+                  autoFocus
+                  className="mt-1.5 w-full resize-y rounded-md border border-line bg-surface px-2.5 py-1.5 text-[13px] leading-relaxed text-ink focus:border-ink focus:outline-none"
+                />
+              ) : (
+                <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">
+                  {draft.body}
+                </p>
+              )}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {editing ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="brand"
+                      loading={approve.isPending}
+                      disabled={draftText.trim().length === 0}
+                      onClick={() => approve.mutate({ id: draft.id, body: draftText.trim() })}
+                    >
+                      Bearbeitet senden
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+                      Abbrechen
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="brand"
+                      loading={approve.isPending}
+                      onClick={() => approve.mutate({ id: draft.id })}
+                    >
+                      Senden
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setDraftText(draft.body);
+                        setEditing(true);
+                      }}
+                    >
+                      Bearbeiten
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      loading={dismiss.isPending}
+                      onClick={() => dismiss.mutate({ id: draft.id })}
+                    >
+                      Verwerfen
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {dispatches.length > 0 && (
+            <div className="mt-3 space-y-1 border-t border-line pt-2">
+              <div className="text-[10px] uppercase tracking-widest text-whisper">
+                KI-Benachrichtigungen ans Team
+              </div>
+              {dispatches.map((d) => (
+                <div key={d.id} className="flex items-start gap-1.5 text-[11.5px] text-ink-soft">
+                  <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-brand" />
+                  <span>
+                    <span className="font-medium text-ink">
+                      {DISPATCH_ROLE_LABEL[d.role] ?? d.role}
+                    </span>{' '}
+                    informiert: {d.summary}
+                    {d.urgency ? ` (${d.urgency})` : ''}
+                    {d.status !== 'sent' ? ` — ${d.status}` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Section>
   );
 }
 
