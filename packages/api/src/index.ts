@@ -125,6 +125,8 @@ export {
   reconcileQuantity,
   ensureSmsMeteredItem,
   reportSmsMeterEvent,
+  ensureAiMeteredItem,
+  reportAiMeterEvent,
 } from './services/stripe';
 export { resolveAccess } from './services/plan-guard';
 

@@ -387,3 +387,46 @@ export async function reportSmsMeterEvent(
     payload: { stripe_customer_id: customerId, value: String(value) },
   });
 }
+
+/**
+ * Ensure the tenant's active Stripe Subscription carries the usage-based AI
+ * metered Price as a line item. Idempotent — adds the item only if missing.
+ * No-op when STRIPE_PRICE_AI_METERED is unset. Mirrors ensureSmsMeteredItem.
+ */
+export async function ensureAiMeteredItem(
+  stripe: Stripe,
+  env: AppContextEnv,
+  subscriptionId: string,
+): Promise<boolean> {
+  const priceId = env.STRIPE_PRICE_AI_METERED;
+  if (!priceId) return false;
+  const s = await stripe.subscriptions.retrieve(subscriptionId);
+  if (s.items.data.some((it) => it.price.id === priceId)) return true;
+  await stripe.subscriptions.update(subscriptionId, {
+    items: [{ price: priceId }],
+    proration_behavior: 'none',
+  });
+  return true;
+}
+
+/**
+ * Report AI usage to the Stripe Billing Meter. `value` = number of AI guest
+ * replies sent for this customer's current period. `identifier` makes the event
+ * idempotent (Stripe drops duplicates). No-op when STRIPE_AI_METER_EVENT_NAME is
+ * unset or value ≤ 0. Mirrors reportSmsMeterEvent.
+ */
+export async function reportAiMeterEvent(
+  stripe: Stripe,
+  env: AppContextEnv,
+  customerId: string,
+  value: number,
+  identifier: string,
+): Promise<void> {
+  const eventName = env.STRIPE_AI_METER_EVENT_NAME;
+  if (!eventName || value <= 0) return;
+  await stripe.billing.meterEvents.create({
+    event_name: eventName,
+    identifier,
+    payload: { stripe_customer_id: customerId, value: String(value) },
+  });
+}

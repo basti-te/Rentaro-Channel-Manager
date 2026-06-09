@@ -187,3 +187,48 @@ opted-in tenants — they just aren't billed yet).
   Twilio account's Geo Permissions.
 - **First run baselines** the watermark to "now" without billing history, so
   switching metering on never retro-charges past SMS.
+
+## AI guest-reply add-on (usage-based metering)
+
+The AI guest-reply assistant is an **opt-in add-on**, off by default
+(`tenants.ai_replies_enabled`), toggled at `/settings` → "KI-Antworten". When on,
+a tenant is billed **per reply the AI actually sends** via a Stripe **Billing
+Meter**. Until the Stripe pieces below exist, the metering job is a no-op (the AI
+still drafts/sends for opted-in tenants — they just aren't billed yet).
+
+A reply counts as billable only once it leaves the building: a `guest_messages`
+row with `ai_generated = true` AND `status = 'sent'`. Drafts a human never
+approves (`status = 'draft'`) or dismisses are never billed — only auto-sent
+replies and human-approved drafts.
+
+### One-time Stripe setup
+
+1. **Create a Meter** (Dashboard → Billing → Meters, or API):
+   - Event name: e.g. `ai_replies` (this is `STRIPE_AI_METER_EVENT_NAME`).
+   - Aggregation: **Sum** of the event `value`.
+   - Customer mapping: default (`stripe_customer_id`); payload value key:
+     default (`value`). The worker sends exactly these keys.
+2. **Create a metered Price** linked to that Meter (a recurring usage Price on
+   the same product as the base plan), priced at **your per-reply rate** (e.g.
+   €0.10 per unit). Unlike SMS, Rentaro reports the *reply count* as the meter
+   value — so set the Price to exactly what you want to charge per AI reply. Its
+   id is `STRIPE_PRICE_AI_METERED`.
+3. Set both in the **worker** env:
+   ```
+   STRIPE_AI_METER_EVENT_NAME=ai_replies
+   STRIPE_PRICE_AI_METERED=price_...
+   ```
+
+### How it bills
+
+- `ai-usage-reconcile` runs daily (03:45) — or on demand via the
+  `ai-usage/reconcile.now` Inngest event.
+- For each AI-on, non-exempt tenant with an active subscription it counts the AI
+  replies that became `sent` (windowed on `updated_at`) since
+  `tenants.ai_usage_reported_through`, reports that count as one meter event,
+  attaches the metered Price to the subscription (idempotent), then advances the
+  watermark.
+- The identifier is keyed by the window start, so a retried run dedups in Stripe
+  instead of double-billing.
+- **First run baselines** the watermark to "now" without billing history, so
+  switching metering on never retro-charges past AI replies.

@@ -32,6 +32,9 @@ export interface AppContextEnv {
   /** Usage-based SMS add-on (optional): metered Price id + Billing Meter event name. */
   STRIPE_PRICE_SMS_METERED?: string;
   STRIPE_SMS_METER_EVENT_NAME?: string;
+  /** Usage-based AI add-on (optional): metered Price id + Billing Meter event name. */
+  STRIPE_PRICE_AI_METERED?: string;
+  STRIPE_AI_METER_EVENT_NAME?: string;
 }
 
 /**

@@ -102,6 +102,16 @@ export type Events = {
   };
 
   /**
+   * Run the daily AI-usage reconcile immediately (count sent AI guest replies
+   * per tenant and report to the Stripe Billing Meter), in addition to its cron.
+   */
+  'ai-usage/reconcile.now': {
+    data: {
+      reason?: string;
+    };
+  };
+
+  /**
    * Sync a booking's OTA message thread (or the active-window bookings) from
    * Channex into guest_messages. Fired by the Channex `message` webhook (with a
    * booking hint) and by a cron safety net. Re-fetches the thread — webhooks are
