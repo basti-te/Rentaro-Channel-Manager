@@ -94,6 +94,7 @@ ALTER TABLE public.cleaning_rule_listings    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cleaning_rule_teammates   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_sms_countries      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.guest_messages            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teammate_dispatches       ENABLE ROW LEVEL SECURITY;
 
 -- ─── SELECT policies ─────────────────────────────────────────────────────────
 -- Idempotent pattern: DROP IF EXISTS, then CREATE.

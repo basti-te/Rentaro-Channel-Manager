@@ -68,6 +68,10 @@ const Env = z.object({
   /** Usage-based SMS add-on: metered Price id + Billing Meter event name. */
   STRIPE_PRICE_SMS_METERED: z.string().optional().transform((v) => v || undefined),
   STRIPE_SMS_METER_EVENT_NAME: z.string().optional().transform((v) => v || undefined),
+
+  // AI guest-reply assistant — optional; the feature no-ops if the key is unset.
+  ANTHROPIC_API_KEY: z.string().optional().transform((v) => v || undefined),
+  ANTHROPIC_MODEL: z.string().optional().transform((v) => v || undefined),
 });
 
 const parsed = Env.safeParse(process.env);

@@ -9,6 +9,7 @@ import { stripeEvent } from './functions/stripe-event';
 import { billingReconcile } from './functions/billing-reconcile';
 import { smsUsageReconcile } from './functions/sms-usage-reconcile';
 import { guestMessagesSync } from './functions/guest-messages-sync';
+import { guestMessageAiDraft } from './functions/guest-message-ai-draft';
 import { channexFullSync } from './functions/channex-full-sync';
 import { outboundReviewsDispatch } from './functions/outbound-reviews-dispatch';
 import { outboundReviewsSend } from './functions/outbound-reviews-send';
@@ -33,6 +34,7 @@ export const inngestFunctions = [
   billingReconcile,
   smsUsageReconcile,
   guestMessagesSync,
+  guestMessageAiDraft,
   channexFullSync,
   outboundReviewsDispatch,
   outboundReviewsSend,

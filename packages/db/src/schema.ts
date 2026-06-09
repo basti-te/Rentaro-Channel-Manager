@@ -786,6 +786,8 @@ export const teammates = pgTable(
     phone: text('phone').notNull(),
     active: boolean('active').notNull().default(true),
     notes: text('notes'),
+    /** Role for AI dispatch + filtering: 'cleaner' | 'handyman' | 'other'. */
+    role: text('role').notNull().default('cleaner'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -794,6 +796,39 @@ export const teammates = pgTable(
   }),
 );
 export type Teammate = typeof teammates.$inferSelect;
+
+/**
+ * AI-initiated background notification to a teammate (cleaner / handyman) when a
+ * guest conversation surfaces an operational task (the AI calls a notify tool).
+ * Audit trail + future operator view.
+ */
+export const teammateDispatches = pgTable(
+  'teammate_dispatches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'cascade' }),
+    teammateId: uuid('teammate_id').references(() => teammates.id, {
+      onDelete: 'set null',
+    }),
+    role: text('role').notNull(),
+    summary: text('summary').notNull(),
+    urgency: text('urgency'),
+    channel: text('channel').notNull().default('sms'),
+    status: text('status').notNull().default('sent'), // sent | failed | no_recipient
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byBooking: index('teammate_dispatches_booking_idx').on(t.bookingId),
+    byTenant: index('teammate_dispatches_tenant_idx').on(t.tenantId),
+  }),
+);
+export type TeammateDispatch = typeof teammateDispatches.$inferSelect;
 
 /** A reusable named checklist a cleaning rule can attach (rendered via {{checklist}}). */
 export const cleaningChecklists = pgTable(

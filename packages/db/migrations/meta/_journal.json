@@ -183,6 +183,13 @@
       "when": 1780951126386,
       "tag": "0025_modern_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1781045739569,
+      "tag": "0026_charming_firestar",
+      "breakpoints": true
     }
   ]
 }

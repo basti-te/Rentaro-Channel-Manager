@@ -12,6 +12,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.0",
     "@cm/api": "workspace:*",
     "@cm/channex": "workspace:*",
     "@cm/db": "workspace:*",
