@@ -27,6 +27,8 @@ export const settingsRouter = router({
           rateSource: tenants.rateSource,
           smsSenderId: tenants.smsSenderId,
           smsEnabled: tenants.smsEnabled,
+          aiRepliesEnabled: tenants.aiRepliesEnabled,
+          aiAutoSend: tenants.aiAutoSend,
           defaultCurrency: tenants.defaultCurrency,
           defaultTimezone: tenants.defaultTimezone,
           defaultCityTaxRateBp: tenants.defaultCityTaxRateBp,
@@ -192,6 +194,24 @@ export const settingsRouter = router({
         .returning({ smsEnabled: tenants.smsEnabled });
       if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
       return { smsEnabled: row.smsEnabled };
+    }),
+
+  /** AI guest-reply add-on. Off = no drafts/replies. Auto-send only takes
+   *  effect when replies are enabled. */
+  setAiReplies: adminProcedure
+    .input(z.object({ aiRepliesEnabled: z.boolean(), aiAutoSend: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await ctx.db
+        .update(tenants)
+        .set({
+          aiRepliesEnabled: input.aiRepliesEnabled,
+          aiAutoSend: input.aiAutoSend && input.aiRepliesEnabled,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, ctx.tenantId!))
+        .returning({ id: tenants.id });
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
+      return { ok: true };
     }),
 
   /**

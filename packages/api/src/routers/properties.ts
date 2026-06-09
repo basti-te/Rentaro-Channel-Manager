@@ -168,6 +168,20 @@ export const propertiesRouter = router({
       return row;
     }),
 
+  /** Per-apartment free-text knowledge base for the AI guest-reply assistant. */
+  setAiKnowledge: editorProcedure
+    .input(z.object({ id: z.string().uuid(), aiKnowledge: z.string().max(8000) }))
+    .mutation(async ({ ctx, input }) => {
+      const value = input.aiKnowledge.trim() === '' ? null : input.aiKnowledge;
+      const [row] = await ctx.db
+        .update(properties)
+        .set({ aiKnowledge: value, updatedAt: new Date() })
+        .where(and(eq(properties.id, input.id), eq(properties.tenantId, ctx.tenantId!)))
+        .returning({ id: properties.id });
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
+      return { ok: true };
+    }),
+
   delete: editorProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
