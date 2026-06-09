@@ -12,6 +12,13 @@ import { SectionCard } from '../components/ui/SectionCard';
 import { Skeleton } from '../components/ui/Skeleton';
 import { trpc } from '../lib/trpc';
 
+type TeammateRole = 'cleaner' | 'handyman' | 'other';
+const ROLES: { value: TeammateRole; label: string }[] = [
+  { value: 'cleaner', label: 'Reinigung' },
+  { value: 'handyman', label: 'Hausmeister' },
+  { value: 'other', label: 'Sonstige' },
+];
+
 export function TeammatesPage() {
   const meQ = trpc.me.current.useQuery();
   const role = meQ.data?.memberships?.[0]?.role;
@@ -42,6 +49,7 @@ function TeammatesSection({ disabled }: { disabled: boolean }) {
   const listQ = trpc.teammates.list.useQuery();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [role, setRole] = useState<TeammateRole>('cleaner');
 
   const refresh = () => utils.teammates.list.invalidate();
   const create = trpc.teammates.create.useMutation({
@@ -49,6 +57,7 @@ function TeammatesSection({ disabled }: { disabled: boolean }) {
       toast.success('Teammate angelegt');
       setName('');
       setPhone('');
+      setRole('cleaner');
       refresh();
     },
     onError: (e) => toast.error(e.message),
@@ -92,6 +101,21 @@ function TeammatesSection({ disabled }: { disabled: boolean }) {
               placeholder="+49170…"
             />
           </div>
+          <div className="space-y-1 min-w-[140px]">
+            <Label htmlFor="tm-role">Rolle</Label>
+            <select
+              id="tm-role"
+              value={role}
+              onChange={(e) => setRole(e.target.value as TeammateRole)}
+              className="h-10 w-full rounded-md border border-line bg-surface px-3 text-sm text-ink focus:border-ink focus:outline-none transition-colors"
+            >
+              {ROLES.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <Button
             variant="brand"
             size="sm"
@@ -99,7 +123,7 @@ function TeammatesSection({ disabled }: { disabled: boolean }) {
             loading={create.isPending}
             disabled={!name.trim() || !phoneValid}
             onClick={() =>
-              create.mutate({ name: name.trim(), phone: phone.trim() })
+              create.mutate({ name: name.trim(), phone: phone.trim(), role })
             }
           >
             Teammate
@@ -123,6 +147,21 @@ function TeammatesSection({ disabled }: { disabled: boolean }) {
                 </div>
                 <div className="num text-[12px] text-muted">{tm.phone}</div>
               </div>
+              <select
+                value={tm.role}
+                disabled={disabled}
+                onChange={(e) =>
+                  update.mutate({ id: tm.id, role: e.target.value as TeammateRole })
+                }
+                className="h-8 rounded-md border border-line bg-surface px-2 text-[12px] text-ink focus:border-ink focus:outline-none transition-colors disabled:opacity-60"
+                aria-label="Rolle"
+              >
+                {ROLES.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
               <Switch
                 size="sm"
                 checked={tm.active}

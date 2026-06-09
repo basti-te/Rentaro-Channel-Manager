@@ -25,6 +25,7 @@ export const teammatesRouter = router({
         name: z.string().trim().min(1).max(120),
         phone,
         active: z.boolean().default(true),
+        role: z.enum(['cleaner', 'handyman', 'other']).default('cleaner'),
         notes: z.string().trim().max(1000).optional(),
       }),
     )
@@ -36,6 +37,7 @@ export const teammatesRouter = router({
           name: input.name,
           phone: input.phone,
           active: input.active,
+          role: input.role,
           notes: input.notes ?? null,
         })
         .returning();
@@ -49,6 +51,7 @@ export const teammatesRouter = router({
         name: z.string().trim().min(1).max(120).optional(),
         phone: phone.optional(),
         active: z.boolean().optional(),
+        role: z.enum(['cleaner', 'handyman', 'other']).optional(),
         notes: z.string().trim().max(1000).nullable().optional(),
       }),
     )
