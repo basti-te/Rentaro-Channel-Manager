@@ -1,7 +1,55 @@
 # Session Handoff — Pickup Notes
 
-_Last sync: **OTA go-live + post-launch polish** session (2026-05-31).
-Everything below is committed + pushed; git HEAD `d4b98e7` on `main`._
+_Last sync: **AI guest-reply assistant + metering** session (2026-06-10).
+Everything below is committed + pushed; git HEAD `491a0de` on `main`._
+
+**Shipped this session (2026-06-10, all on `main`):** the **AI guest-reply
+assistant** — an opt-in, paid add-on that drafts replies to OTA guest messages
+and can dispatch a teammate. See **ADR 0012** for the full design. Pieces:
+
+- **Ingest** — `guest-messages-sync` pulls each OTA thread via Channex
+  `GET /bookings/{id}/messages` into the new `guest_messages` table (dedup by
+  `channex_message_id`), triggered by the Channex `message` webhook. Runs in
+  parallel to the Channex iframe (which stays the read surface).
+- **Draft + dispatch** — `guest-message-ai-draft` (Anthropic SDK, model-agnostic
+  call, default `claude-opus-4-8`, override via `ANTHROPIC_MODEL`) grounds the
+  model in per-apartment facts (`properties.ai_knowledge`, edited in the
+  Apartments dialog) and offers a `notify_teammate` tool. Human-in-the-loop by
+  default (status `draft`); per-tenant `ai_replies_enabled` master + `ai_auto_send`
+  toggles at `/settings` → "KI-Antworten".
+- **Teammate roles** — `teammates.role` (cleaner / handyman / other) with a role
+  picker at `/teammates`, so dispatch can target a handyman vs. a cleaner.
+- **Metering (Phase 5)** — `ai-usage-reconcile` (daily 03:45 + `ai-usage/reconcile.now`)
+  bills **per AI reply sent** via a Stripe Billing Meter, mirroring SMS metering.
+  Watermark `tenants.ai_usage_reported_through`. No-op until the Stripe pieces
+  below exist.
+- UI: AI-draft Senden/Bearbeiten/Verwerfen + dispatch log in BookingDetailSheet.
+
+**Operator action items — AI add-on (do these to start billing AI):**
+1. **Anthropic key** — `ANTHROPIC_API_KEY` set + deployed in the Railway worker
+   (operator confirmed done; payment method on file). Without it the assistant
+   no-ops (no drafts).
+2. **Stripe Meter + metered Price** — create a Billing Meter (event e.g.
+   `ai_replies`, aggregation Sum) and a recurring **per-reply** metered Price
+   (NOT per-cent like SMS — the meter value is the reply count, so set the Price
+   to your €/reply rate). Then set in the **worker** env:
+   `STRIPE_AI_METER_EVENT_NAME=ai_replies` and `STRIPE_PRICE_AI_METERED=price_…`.
+   Full steps in `docs/stripe-setup.md` → "AI guest-reply add-on". Until both are
+   set, opted-in tenants get AI replies **unbilled**.
+3. **Per-apartment KI-Wissen** — fill the "KI-Wissen" field in each apartment
+   (Apartments → edit) so drafts have facts to answer from. Thin knowledge →
+   thin answers.
+4. **Turn it on** — `/settings` → "KI-Antworten" master switch; leave Auto-Send
+   OFF until the drafts look trustworthy.
+
+_(Note: this doc skipped the intervening post-go-live sessions — SMS add-on +
+per-country pricing/allow-list, Statistik dashboard, trigger builder
+"sofort"/last-minute/min-lead-time, landing refresh. All are on `main` and live;
+they just weren't re-synced here. The AI assistant is the freshest work.)_
+
+---
+
+## Prior sync (2026-05-31) — OTA go-live + post-launch polish
 
 **Shipped 2026-05-30/31 (all on `main`, deployed via Vercel/Railway):**
 - **OTA cutover LIVE** — 16 apts connected + Airbnb/Booking mapped (self-service
