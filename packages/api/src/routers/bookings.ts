@@ -5,6 +5,7 @@ import { bookings, channexProperties, properties, tenants } from '@cm/db';
 import { createChannexClient, ChannexError } from '@cm/channex';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
 import { enqueueAri } from '../services/ari';
+import { resolveBookingAmounts } from '../services/booking-amounts';
 
 /** YYYY-MM-DD validator. */
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
@@ -133,7 +134,15 @@ export const bookingsRouter = router({
           .limit(1)
       )[0];
       if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
-      return row;
+      return {
+        ...row,
+        financials: resolveBookingAmounts({
+          source: row.source,
+          priceCents: row.priceCents,
+          otaCommissionCents: row.otaCommissionCents,
+          rawPayload: row.rawPayload,
+        }),
+      };
     }),
 
   /**

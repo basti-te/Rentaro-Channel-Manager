@@ -52,6 +52,7 @@ interface MappedBookingRow {
   checkin: string;
   checkout: string;
   priceCents: bigint | null;
+  otaCommissionCents: bigint | null;
   currency: string;
   otaName: string | null;
   otaConfirmationCode: string | null;
@@ -93,6 +94,7 @@ export function mapChannexBooking(
     checkin: a.arrival_date,
     checkout: a.departure_date,
     priceCents: amountToCents(a.amount),
+    otaCommissionCents: amountToCents(a.ota_commission),
     currency: a.currency ?? 'EUR',
     otaName: a.ota_name ?? null,
     otaConfirmationCode: a.ota_reservation_code ?? a.unique_id ?? null,

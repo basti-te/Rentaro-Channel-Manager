@@ -436,6 +436,10 @@ export const bookings = pgTable(
     /** Grand total = lodging + cleaning + city tax. Source of truth for Channex. */
     priceCents: bigint('price_cents', { mode: 'bigint' }),
     currency: text('currency').notNull().default('EUR'),
+    /** OTA commission (Channex `ota_commission`), in cents. NULL for native
+     *  bookings or channels that don't report it. Lets us show gross vs. payout
+     *  and feed the guest-invoice resolver. */
+    otaCommissionCents: bigint('ota_commission_cents', { mode: 'bigint' }),
 
     /** If true, the review-automation job (Phase 11) sends a review request
      *  3 days after checkout. Per-booking opt-out for difficult guests. */

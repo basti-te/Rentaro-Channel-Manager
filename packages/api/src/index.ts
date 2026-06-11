@@ -130,6 +130,15 @@ export {
 } from './services/stripe';
 export { resolveAccess } from './services/plan-guard';
 
+// Booking money resolution (gross vs. payout vs. OTA commission) — used by the
+// booking detail sheet and the guest-invoice engine.
+export {
+  resolveBookingAmounts,
+  daysSumCents,
+  type ResolvedAmounts,
+  type BookingAmountInput,
+} from './services/booking-amounts';
+
 // ARI outbox enqueue — reused by the worker's booking-feed ingest so an
 // inbound OTA booking/cancellation pushes availability to Channex immediately
 // (same path the internal booking mutations use).

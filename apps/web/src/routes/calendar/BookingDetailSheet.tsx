@@ -113,6 +113,13 @@ export function BookingDetailSheet({
     onError: (e) => toast.error(e.message),
   });
 
+  // Real money figures (gross vs. payout vs. OTA commission), resolved
+  // server-side from the Channex payload — see services/booking-amounts.ts.
+  const financialsQ = trpc.bookings.byId.useQuery(
+    { id: booking?.id ?? '' },
+    { enabled: !!booking },
+  );
+
   if (!booking) return null;
 
   const source = SOURCE_META[booking.source];
@@ -134,6 +141,23 @@ export function BookingDetailSheet({
   const perNight =
     booking.priceCents != null && nights > 0
       ? formatPrice(Number(booking.priceCents) / nights, booking.currency)
+      : null;
+
+  // For OTA bookings: show the guest-paid GROSS + OTA commission + payout,
+  // not just the payout. Only when gross and payout genuinely differ.
+  const fin = financialsQ.data?.financials ?? null;
+  const payoutBreakdown =
+    isExternal &&
+    fin &&
+    fin.grossCents != null &&
+    fin.payoutCents != null &&
+    fin.grossCents !== fin.payoutCents
+      ? {
+          gross: fin.grossCents,
+          commission: fin.commissionCents,
+          payout: fin.payoutCents,
+          note: fin.note,
+        }
       : null;
 
   return (
@@ -294,6 +318,32 @@ export function BookingDetailSheet({
                       {price}
                     </span>
                   </div>
+                </div>
+              ) : payoutBreakdown ? (
+                <div className="rounded-md border border-line bg-canvas/60 px-4 py-3 space-y-1.5">
+                  <BreakdownRow
+                    label="Brutto (Gast)"
+                    valueCents={payoutBreakdown.gross}
+                    currency={booking.currency}
+                  />
+                  {payoutBreakdown.commission != null && payoutBreakdown.commission > 0 && (
+                    <BreakdownRow
+                      label="OTA-Provision"
+                      valueCents={payoutBreakdown.commission}
+                      currency={booking.currency}
+                    />
+                  )}
+                  <div className="border-t border-line pt-2 mt-1 flex items-baseline justify-between">
+                    <span className="text-[13px] font-semibold text-ink">Auszahlung</span>
+                    <span className="display num text-[20px] font-medium text-ink leading-none">
+                      {formatPrice(payoutBreakdown.payout, booking.currency)}
+                    </span>
+                  </div>
+                  {payoutBreakdown.note && (
+                    <p className="text-[11px] text-whisper pt-1 leading-snug">
+                      {payoutBreakdown.note}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="flex items-baseline gap-3">

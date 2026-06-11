@@ -1,0 +1,1 @@
+ALTER TABLE "bookings" ADD COLUMN "ota_commission_cents" bigint;
