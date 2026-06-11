@@ -5,6 +5,7 @@ import {
   LogOut,
   Plug,
   Share2,
+  Sparkles,
   Settings,
   Star,
   Users,
@@ -36,6 +37,7 @@ const LINKS: MenuLink[] = [
   { to: '/listing-links', label: 'Listing-Links', icon: Share2, description: 'Airbnb-/Booking-Links kopieren & teilen' },
   { to: '/reviews',    label: 'Bewertungen',  icon: Star,       description: 'Auto-Review-Vorlagen nach Checkout' },
   { to: '/teammates',  label: 'Teammates',    icon: Users,      description: 'Cleaner / interne SMS-Empfänger' },
+  { to: '/ki-gastnachrichten', label: 'KI-Gastnachrichten', icon: Sparkles, description: 'KI-Antworten an Gäste + Apartment-Wissen' },
   { to: '/notifications', label: 'Benachrichtigungen', icon: Bell, description: 'E-Mail-Alerts bei Buchungen & Fehlern' },
   { to: '/settings',   label: 'Einstellungen',icon: Settings,   description: 'Account, Abo, Preis-Quelle, SMS' },
 ];

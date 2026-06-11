@@ -23,6 +23,7 @@ import { MenuPage } from './routes/menu';
 import { SettingsPage } from './routes/settings';
 import { NotificationsPage } from './routes/notifications';
 import { TeammatesPage } from './routes/teammates';
+import { KiGuestMessagesPage } from './routes/ai-messages';
 import { ReviewsPage } from './routes/reviews';
 import { ListingLinksPage } from './routes/listing-links';
 import { SmsCountriesPage } from './routes/sms-countries';
@@ -148,6 +149,12 @@ const teammatesRoute = createRoute({
   component: TeammatesPage,
 });
 
+const aiMessagesRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/ki-gastnachrichten',
+  component: KiGuestMessagesPage,
+});
+
 const reviewsRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: '/reviews',
@@ -190,6 +197,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     notificationsRoute,
     teammatesRoute,
+    aiMessagesRoute,
     reviewsRoute,
     listingLinksRoute,
     smsCountriesRoute,
