@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { FileText, Download } from 'lucide-react';
 
@@ -7,6 +7,14 @@ import { Input } from '../../components/ui/Input';
 import { formatMoney } from '../../lib/format-money';
 import { invoicePdfUrl } from '../../lib/invoice-url';
 import { trpc } from '../../lib/trpc';
+
+const centsToEuro = (c: number) =>
+  (c / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const euroToCents = (s: string) => {
+  const t = s.trim();
+  const norm = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t;
+  return Math.max(0, Math.round((parseFloat(norm) || 0) * 100));
+};
 
 /**
  * Booking-detail invoice block: shows the issued invoice (with PDF download) or,
@@ -48,6 +56,23 @@ export function InvoiceSection({
   const voidM = trpc.invoices.voidInvoice.useMutation({
     onSuccess: () => {
       toast.success('Rechnung storniert');
+      void utils.invoices.forBooking.invalidate({ bookingId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // Editable invoice amounts (paid gross + cleaning), seeded from the server.
+  const [grossEuro, setGrossEuro] = useState('');
+  const [cleaningEuro, setCleaningEuro] = useState('');
+  const srvGross = q.data?.grossCents ?? null;
+  const srvCleaning = q.data?.cleaningCents ?? null;
+  useEffect(() => {
+    if (srvGross != null) setGrossEuro(centsToEuro(srvGross));
+    if (srvCleaning != null) setCleaningEuro(centsToEuro(srvCleaning));
+  }, [srvGross, srvCleaning]);
+  const ov = trpc.invoices.setOverrides.useMutation({
+    onSuccess: () => {
+      toast.success('Beträge gespeichert');
       void utils.invoices.forBooking.invalidate({ bookingId });
     },
     onError: (e) => toast.error(e.message),
@@ -119,19 +144,66 @@ export function InvoiceSection({
   }
 
   if (!showForm) {
+    const b = d.breakdown;
+    const dirty =
+      (d.grossCents != null && euroToCents(grossEuro) !== d.grossCents) ||
+      (d.cleaningCents != null && euroToCents(cleaningEuro) !== d.cleaningCents);
+    const vatPct = (b.vatRateBp / 100).toString().replace('.', ',');
     return wrap(
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[13px] text-ink">
-          Brutto {formatMoney(d.breakdown.totalGrossCents, d.currency)}
-        </span>
+      <div className="space-y-3 rounded-md border border-line bg-canvas/60 px-3 py-3">
+        <p className="text-[11.5px] text-muted">
+          Gezahlter Betrag prüfen — daraus werden Übernachtung, City-Tax und USt berechnet.
+        </p>
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <label className="text-[11px] text-whisper block mb-1">Gezahlt (Brutto) €</label>
+            <Input value={grossEuro} onChange={(e) => setGrossEuro(e.target.value)} />
+          </div>
+          <div className="flex-1">
+            <label className="text-[11px] text-whisper block mb-1">davon Reinigung €</label>
+            <Input value={cleaningEuro} onChange={(e) => setCleaningEuro(e.target.value)} />
+          </div>
+        </div>
+        {dirty && (
+          <div className="flex justify-end">
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={ov.isPending}
+              onClick={() =>
+                ov.mutate({
+                  bookingId,
+                  grossCents: euroToCents(grossEuro),
+                  cleaningCents: euroToCents(cleaningEuro),
+                })
+              }
+            >
+              Beträge speichern
+            </Button>
+          </div>
+        )}
+        <div className="text-[11.5px] text-muted leading-relaxed border-t border-line pt-2">
+          Übernachtung {formatMoney(b.lodgingGrossCents, d.currency)} · Übernachtungssteuer{' '}
+          {formatMoney(b.cityTaxCents, d.currency)} · USt {vatPct}%{' '}
+          {formatMoney(b.totalVatCents, d.currency)}
+          <span className="block text-ink font-medium mt-0.5">
+            Brutto {formatMoney(b.totalGrossCents, d.currency)}
+          </span>
+        </div>
         <Button
           variant="brand"
           size="sm"
           iconLeft={<FileText className="h-4 w-4" />}
+          disabled={dirty}
           onClick={() => setShowForm(true)}
         >
           Rechnung erstellen
         </Button>
+        {dirty && (
+          <p className="text-[11px] text-whisper">
+            Erst „Beträge speichern", dann die Rechnung erstellen.
+          </p>
+        )}
       </div>,
     );
   }

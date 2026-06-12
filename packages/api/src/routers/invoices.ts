@@ -204,6 +204,33 @@ export const invoicesRouter = router({
       }
     }),
 
+  /** Operator override of the invoice amounts (gross total + cleaning), per
+   *  booking. Persisted → the guest portal uses them too. null clears. */
+  setOverrides: editorProcedure
+    .input(
+      z.object({
+        bookingId: z.string().uuid(),
+        grossCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
+        cleaningCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const patch: Record<string, unknown> = { updatedAt: new Date() };
+      if (input.grossCents !== undefined)
+        patch.invoiceGrossOverrideCents =
+          input.grossCents == null ? null : BigInt(input.grossCents);
+      if (input.cleaningCents !== undefined)
+        patch.invoiceCleaningOverrideCents =
+          input.cleaningCents == null ? null : BigInt(input.cleaningCents);
+      const [row] = await ctx.db
+        .update(bookings)
+        .set(patch)
+        .where(and(eq(bookings.id, input.bookingId), eq(bookings.tenantId, ctx.tenantId!)))
+        .returning({ id: bookings.id });
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
+      return { ok: true };
+    }),
+
   /** Storno: void an issued invoice. Frees the booking for a corrected re-issue. */
   voidInvoice: adminProcedure
     .input(z.object({ invoiceId: z.string().uuid() }))

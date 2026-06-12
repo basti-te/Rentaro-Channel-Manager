@@ -42,18 +42,28 @@ export interface InvoiceBreakdown {
   cityTaxRateBp: number;
 }
 
-/** Decompose lodging + cleaning gross into the invoice line amounts. */
+/**
+ * Decompose a PAID GROSS TOTAL (+ its cleaning portion) into the invoice line
+ * amounts. The total is the anchor — the breakdown ALWAYS reconciles to it
+ * exactly. City tax is extracted from the non-cleaning portion (= 5% of the net
+ * lodging), VAT from lodging + cleaning. Reproduces the operator's invoice:
+ * total 676,93, cleaning 39,98 → city tax 30,33, net 634,62, VAT 42,31.
+ */
 export function computeInvoiceBreakdown(
-  lodgingGrossCents: number,
+  grossTotalCents: number,
   cleaningGrossCents: number,
   cfg: InvoiceConfig,
 ): InvoiceBreakdown {
   const vat = cfg.vatMode === 'kleinunternehmer' ? 0 : cfg.vatRateBp / 10_000;
-  const lodgingGross = Math.round(lodgingGrossCents);
-  const cleaningGross = Math.round(cleaningGrossCents);
+  const cityRate = cfg.cityTaxRateBp / 10_000;
+  const grossTotal = Math.max(0, Math.round(grossTotalCents));
+  const cleaningGross = Math.min(grossTotal, Math.max(0, Math.round(cleaningGrossCents)));
 
-  // City tax: 5% of GROSS lodging (matches the operator's invoices), no VAT.
-  const cityTax = Math.round(lodgingGross * (cfg.cityTaxRateBp / 10_000));
+  // The lodging portion (everything except cleaning) INCLUDES the city tax.
+  // Extract it: cityTax = portion × r/(1+r) = 5% of the net lodging.
+  const lodgingPortion = grossTotal - cleaningGross;
+  const cityTax = Math.round((lodgingPortion * cityRate) / (1 + cityRate));
+  const lodgingGross = lodgingPortion - cityTax;
 
   const netOf = (gross: number) => Math.round(gross / (1 + vat));
   const lodgingNet = netOf(lodgingGross);
@@ -71,16 +81,18 @@ export function computeInvoiceBreakdown(
     cityTaxCents: cityTax,
     totalNetCents: lodgingNet + cleaningNet + cityTax,
     totalVatCents: lodgingVat + cleaningVat,
-    totalGrossCents: lodgingGross + cityTax + cleaningGross,
+    totalGrossCents: lodgingGross + cityTax + cleaningGross, // == grossTotal
     vatRateBp: cfg.vatMode === 'kleinunternehmer' ? 0 : cfg.vatRateBp,
     cityTaxRateBp: cfg.cityTaxRateBp,
   };
 }
 
 export interface InvoiceBasis {
-  lodgingGrossCents: number;
+  /** The paid gross total to invoice (operator override wins, else auto). */
+  grossTotalCents: number;
+  /** The cleaning portion of that total (operator override wins, else auto). */
   cleaningGrossCents: number;
-  /** False when we can't reliably determine the lodging price (→ suppress). */
+  /** False when we have no reliable amount to invoice (→ suppress). */
   confident: boolean;
 }
 
@@ -88,10 +100,15 @@ const toNum = (x: bigint | number | null | undefined): number | null =>
   x == null ? null : Number(x);
 
 /**
- * Derive the lodging + cleaning gross to invoice for a booking.
- *   - native: nightly × nights (+ stored cleaning fee).
- *   - OTA: lodging = Σ per-night prices (rooms[].days); cleaning unknown → 0.
- * `nights` is checkout − checkin.
+ * Derive the (gross total, cleaning) to invoice for a booking. The total is the
+ * anchor; the breakdown reconciles to it exactly. Per source:
+ *   - native: price_cents is the gross total; cleaning = stored fee.
+ *   - Booking.com/Expedia: `amount` is the guest-paid gross; cleaning = amount
+ *     minus the per-night lodging portion (incl. its city tax).
+ *   - Airbnb: `amount` is the payout, not the gross → best-effort lodging + city
+ *     tax, cleaning unknown (operator corrects via the override).
+ * Operator overrides (persisted on the booking) always win — so a corrected
+ * amount also drives the guest-portal invoice.
  */
 export function invoiceBasisForBooking(
   b: {
@@ -99,55 +116,50 @@ export function invoiceBasisForBooking(
     priceCents: bigint | number | null;
     nightlyRateCents: bigint | number | null;
     cleaningFeeCents: bigint | number | null;
+    invoiceGrossOverrideCents?: bigint | number | null;
+    invoiceCleaningOverrideCents?: bigint | number | null;
     rawPayload?: unknown;
   },
   nights: number,
   cityTaxRateBp: number,
 ): InvoiceBasis {
   const cityRate = cityTaxRateBp / 10_000;
-
-  // Native bookings: we stored the line items ourselves.
-  if (!OTA_SOURCES.has(b.source)) {
-    const nightly = toNum(b.nightlyRateCents) ?? 0;
-    const lodging = nightly * Math.max(1, nights);
-    return {
-      lodgingGrossCents: lodging,
-      cleaningGrossCents: toNum(b.cleaningFeeCents) ?? 0,
-      confident: lodging > 0,
-    };
-  }
-
   const amount = toNum(b.priceCents);
   const days = daysSumCents(b.rawPayload);
 
-  // Airbnb: `amount` is the PAYOUT (not the guest-paid gross) and the cleaning
-  // fee isn't separable — invoice the per-night lodging only (best effort).
-  if (b.source === 'airbnb') {
-    const lodging = days ?? 0;
-    return { lodgingGrossCents: lodging, cleaningGrossCents: 0, confident: lodging > 0 };
-  }
+  let grossTotal: number | null;
+  let cleaning = 0;
 
-  // Booking.com / Expedia / other: `amount` IS the guest-paid GROSS. Reconstruct
-  // so the invoice TOTAL equals it exactly: lodging = Σ per-night prices, city
-  // tax = rate × lodging, cleaning = the remainder (amount − lodging − cityTax).
-  // This is what fixes "Brutto too low" — the cleaning fee Channex bundles into
-  // `amount` but doesn't break out for us.
-  if (amount != null && amount > 0) {
-    let lodging = days != null && days > 0 ? days : Math.round(amount / (1 + cityRate));
-    const cityTax = Math.round(lodging * cityRate);
-    let cleaning = amount - lodging - cityTax;
-    if (cleaning < 0) {
-      // Lodging + city tax already ≥ the paid amount → nothing separable as
-      // cleaning; fold everything into lodging so the total still reconciles.
-      lodging = Math.round(amount / (1 + cityRate));
-      cleaning = 0;
+  if (!OTA_SOURCES.has(b.source)) {
+    cleaning = toNum(b.cleaningFeeCents) ?? 0;
+    grossTotal = amount;
+    if (grossTotal == null) {
+      const lodging = (toNum(b.nightlyRateCents) ?? 0) * Math.max(1, nights);
+      grossTotal = lodging + Math.round(lodging * cityRate) + cleaning;
     }
-    return { lodgingGrossCents: lodging, cleaningGrossCents: cleaning, confident: true };
+  } else if (b.source === 'airbnb') {
+    grossTotal = days != null && days > 0 ? days + Math.round(days * cityRate) : null;
+  } else {
+    grossTotal = amount;
+    if (amount != null && days != null && days > 0) {
+      cleaning = Math.max(0, amount - days - Math.round(days * cityRate));
+    }
   }
 
-  // No reliable amount → fall back to per-night lodging only.
-  const lodging = days ?? 0;
-  return { lodgingGrossCents: lodging, cleaningGrossCents: 0, confident: lodging > 0 };
+  // Operator overrides win (persisted → the portal uses them too).
+  const grossOverride = toNum(b.invoiceGrossOverrideCents);
+  const cleaningOverride = toNum(b.invoiceCleaningOverrideCents);
+  if (grossOverride != null) grossTotal = grossOverride;
+  if (cleaningOverride != null) cleaning = cleaningOverride;
+
+  if (grossTotal == null || grossTotal <= 0) {
+    return { grossTotalCents: 0, cleaningGrossCents: 0, confident: false };
+  }
+  return {
+    grossTotalCents: grossTotal,
+    cleaningGrossCents: Math.min(Math.max(0, cleaning), grossTotal),
+    confident: true,
+  };
 }
 
 /** "606,62 EUR" — matches the operator's invoice number/currency format. */

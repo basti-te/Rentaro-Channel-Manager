@@ -211,6 +211,13 @@
       "when": 1781252278750,
       "tag": "0029_salty_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1781260737875,
+      "tag": "0030_silent_lyja",
+      "breakpoints": true
     }
   ]
 }

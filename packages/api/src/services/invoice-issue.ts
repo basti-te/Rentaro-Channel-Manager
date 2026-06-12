@@ -72,6 +72,8 @@ async function loadContext(db: Database, tenantId: string, bookingId: string) {
         priceCents: bookings.priceCents,
         nightlyRateCents: bookings.nightlyRateCents,
         cleaningFeeCents: bookings.cleaningFeeCents,
+        invoiceGrossOverrideCents: bookings.invoiceGrossOverrideCents,
+        invoiceCleaningOverrideCents: bookings.invoiceCleaningOverrideCents,
         rawPayload: bookings.rawPayload,
         propertyName: properties.name,
       })
@@ -90,6 +92,9 @@ export interface InvoicePreview {
   apartmentName: string;
   currency: string;
   breakdown: ReturnType<typeof computeInvoiceBreakdown> | null;
+  /** The editable anchor amounts (operator override or auto). */
+  grossCents: number | null;
+  cleaningCents: number | null;
   existing: { id: string; number: string; token: string; status: string } | null;
   enabled: boolean;
 }
@@ -121,6 +126,8 @@ export async function previewInvoice(
     apartmentName: bk?.propertyName ?? '',
     currency: bk?.currency ?? 'EUR',
     breakdown: null,
+    grossCents: null,
+    cleaningCents: null,
     existing,
     enabled,
   };
@@ -138,7 +145,7 @@ export async function previewInvoice(
     return { confident: false, reason: 'no_amount', ...base, nights };
   }
   const breakdown = computeInvoiceBreakdown(
-    basis.lodgingGrossCents,
+    basis.grossTotalCents,
     basis.cleaningGrossCents,
     cfg,
   );
@@ -148,6 +155,8 @@ export async function previewInvoice(
     apartmentName: bk.propertyName,
     currency: bk.currency,
     breakdown,
+    grossCents: basis.grossTotalCents,
+    cleaningCents: basis.cleaningGrossCents,
     existing,
     enabled,
   };
@@ -184,7 +193,7 @@ export async function issueInvoiceForBooking(
   const basis = invoiceBasisForBooking(bk, nights, settings.cityTaxRateBp);
   if (!basis.confident) throw new InvoiceIssueError('no_amount');
 
-  const b = computeInvoiceBreakdown(basis.lodgingGrossCents, basis.cleaningGrossCents, {
+  const b = computeInvoiceBreakdown(basis.grossTotalCents, basis.cleaningGrossCents, {
     vatMode: settings.vatMode as 'regular' | 'kleinunternehmer',
     vatRateBp: settings.vatRateBp,
     cityTaxRateBp: settings.cityTaxRateBp,

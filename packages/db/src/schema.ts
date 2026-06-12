@@ -440,6 +440,11 @@ export const bookings = pgTable(
      *  bookings or channels that don't report it. Lets us show gross vs. payout
      *  and feed the guest-invoice resolver. */
     otaCommissionCents: bigint('ota_commission_cents', { mode: 'bigint' }),
+    /** Operator overrides for the guest invoice (cents): the corrected paid
+     *  gross total + the cleaning portion. NULL = use the auto-derived value.
+     *  Persisted so a correction also drives the guest-portal invoice. */
+    invoiceGrossOverrideCents: bigint('invoice_gross_override_cents', { mode: 'bigint' }),
+    invoiceCleaningOverrideCents: bigint('invoice_cleaning_override_cents', { mode: 'bigint' }),
 
     /** If true, the review-automation job (Phase 11) sends a review request
      *  3 days after checkout. Per-booking opt-out for difficult guests. */
