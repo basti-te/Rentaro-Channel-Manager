@@ -139,6 +139,17 @@ export {
   type BookingAmountInput,
 } from './services/booking-amounts';
 
+// Guest-invoice money engine — tax decomposition + formatting.
+export {
+  computeInvoiceBreakdown,
+  invoiceBasisForBooking,
+  formatInvoiceMoney,
+  formatInvoiceDate,
+  type InvoiceConfig,
+  type InvoiceBreakdown,
+  type InvoiceBasis,
+} from './services/invoices';
+
 // ARI outbox enqueue — reused by the worker's booking-feed ingest so an
 // inbound OTA booking/cancellation pushes availability to Channex immediately
 // (same path the internal booking mutations use).

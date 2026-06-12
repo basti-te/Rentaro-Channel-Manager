@@ -197,6 +197,13 @@
       "when": 1781216821893,
       "tag": "0027_graceful_lifeguard",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1781226159429,
+      "tag": "0028_fuzzy_dakota_north",
+      "breakpoints": true
     }
   ]
 }

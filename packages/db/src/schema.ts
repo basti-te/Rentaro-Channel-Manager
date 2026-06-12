@@ -1282,6 +1282,135 @@ export const cleaningCalendars = pgTable(
   }),
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Guest invoices (self-service Rechnungs-Portal)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Per-tenant invoice configuration — issuer identity, tax treatment, numbering,
+ * and the public-portal slug. 1:1 with `tenants`. Backend-only (RLS deny).
+ *
+ * Tax model (verified against a real Leopards GmbH invoice):
+ *   - Lodging + cleaning are GROSS incl. `vat_rate_bp` (700 = 7%).
+ *   - City tax (`city_tax_rate_bp`, 500 = 5%) is charged on GROSS lodging only
+ *     (NOT cleaning) and carries 0% VAT (a pass-through line).
+ */
+export const tenantInvoiceSettings = pgTable('tenant_invoice_settings', {
+  tenantId: uuid('tenant_id')
+    .primaryKey()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  /** Master switch for the invoice feature + public portal. */
+  enabled: boolean('enabled').notNull().default(false),
+
+  // Issuer identity (§14 UStG)
+  issuerName: text('issuer_name'),
+  issuerAddress: text('issuer_address'),
+  senderLine: text('sender_line'),
+  logoText: text('logo_text'),
+  contactPerson: text('contact_person'),
+  taxId: text('tax_id'),
+  taxNumber: text('tax_number'),
+
+  // Tax treatment
+  vatMode: text('vat_mode').notNull().default('regular'), // 'regular' | 'kleinunternehmer'
+  vatRateBp: integer('vat_rate_bp').notNull().default(700),
+  cityTaxRateBp: integer('city_tax_rate_bp').notNull().default(500),
+
+  // Line-item labels
+  lodgingLabel: text('lodging_label').notNull().default('Übernachtung'),
+  cityTaxLabel: text('city_tax_label').notNull().default('Übernachtungssteuer'),
+  cleaningLabel: text('cleaning_label').notNull().default('Endreinigung'),
+
+  // Numbering
+  numberPrefix: text('number_prefix').notNull().default('RE-'),
+  nextSeq: integer('next_seq').notNull().default(1),
+
+  // Footer (issuer name/address forms column 1)
+  footerContact: text('footer_contact'),
+  footerRegistry: text('footer_registry'),
+  footerBank: text('footer_bank'),
+  closingNote: text('closing_note')
+    .notNull()
+    .default('Der Rechnungsbetrag wurde bereits bezahlt.\nVielen Dank.'),
+
+  // Public portal
+  publicSlug: text('public_slug').unique(),
+  /** Optional security boost: also require the OTA confirmation code at lookup. */
+  lookupRequireCode: boolean('lookup_require_code').notNull().default(false),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * An issued guest invoice. One per booking (UNIQUE), with a frozen snapshot of
+ * every amount + the issuer config at issue time, so later config/price changes
+ * never alter an issued document. `token` is the capability for the (public)
+ * PDF download URL. Backend-only (RLS deny).
+ */
+export const guestInvoices = pgTable(
+  'guest_invoices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'cascade' })
+      .unique(),
+    /** Sequential, human-facing number (e.g. "RE-1042"). Unique per tenant. */
+    number: text('number').notNull(),
+    status: text('status').notNull().default('issued'), // 'issued' | 'void'
+    /** Opaque capability token for the PDF download URL. */
+    token: text('token').notNull().unique(),
+
+    // Dates
+    issueDate: date('issue_date').notNull(),
+    serviceDate: date('service_date').notNull(),
+    stayFrom: date('stay_from').notNull(),
+    stayTo: date('stay_to').notNull(),
+    nights: integer('nights').notNull(),
+
+    currency: text('currency').notNull().default('EUR'),
+
+    // Amount snapshot (cents)
+    apartmentName: text('apartment_name').notNull(),
+    lodgingGrossCents: bigint('lodging_gross_cents', { mode: 'bigint' }).notNull(),
+    lodgingNetCents: bigint('lodging_net_cents', { mode: 'bigint' }).notNull(),
+    lodgingVatCents: bigint('lodging_vat_cents', { mode: 'bigint' }).notNull(),
+    cleaningGrossCents: bigint('cleaning_gross_cents', { mode: 'bigint' }).notNull(),
+    cleaningNetCents: bigint('cleaning_net_cents', { mode: 'bigint' }).notNull(),
+    cleaningVatCents: bigint('cleaning_vat_cents', { mode: 'bigint' }).notNull(),
+    cityTaxCents: bigint('city_tax_cents', { mode: 'bigint' }).notNull(),
+    totalNetCents: bigint('total_net_cents', { mode: 'bigint' }).notNull(),
+    totalVatCents: bigint('total_vat_cents', { mode: 'bigint' }).notNull(),
+    totalGrossCents: bigint('total_gross_cents', { mode: 'bigint' }).notNull(),
+    vatRateBp: integer('vat_rate_bp').notNull(),
+    cityTaxRateBp: integer('city_tax_rate_bp').notNull(),
+
+    // Recipient (entered by the guest in the portal)
+    recipientCompany: text('recipient_company'),
+    recipientName: text('recipient_name').notNull(),
+    recipientStreet: text('recipient_street').notNull(),
+    recipientZip: text('recipient_zip').notNull(),
+    recipientCity: text('recipient_city').notNull(),
+    recipientCountry: text('recipient_country').notNull().default('Deutschland'),
+    recipientVatId: text('recipient_vat_id'),
+    recipientEmail: text('recipient_email'),
+
+    /** Frozen copy of tenant_invoice_settings at issue time. */
+    issuerSnapshot: jsonb('issuer_snapshot').notNull(),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byTenant: index('guest_invoices_tenant_idx').on(t.tenantId),
+    byNumber: uniqueIndex('guest_invoices_number_idx').on(t.tenantId, t.number),
+  }),
+);
+
 export type CleaningCalendar = typeof cleaningCalendars.$inferSelect;
 export type NewCleaningCalendar = typeof cleaningCalendars.$inferInsert;
 
