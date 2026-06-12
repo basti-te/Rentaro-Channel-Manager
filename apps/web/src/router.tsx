@@ -19,6 +19,7 @@ import { ApartmentsPage } from './routes/apartments';
 import { ChannelsPage } from './routes/channels';
 import { CalendarPage } from './routes/calendar';
 import { MessagesPage } from './routes/messages';
+import { MessagesInboxPage } from './routes/messages-inbox';
 import { CleaningPage } from './routes/cleaning';
 import { MenuPage } from './routes/menu';
 import { SettingsPage } from './routes/settings';
@@ -128,6 +129,12 @@ const messagesRoute = createRoute({
   component: MessagesPage,
 });
 
+const messagesInboxRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/posteingang',
+  component: MessagesInboxPage,
+});
+
 const cleaningRoute = createRoute({
   getParentRoute: () => dashboardRoute,
   path: '/cleaning',
@@ -208,6 +215,7 @@ const routeTree = rootRoute.addChildren([
     channelsRoute,
     calendarRoute,
     messagesRoute,
+    messagesInboxRoute,
     cleaningRoute,
     menuRoute,
     settingsRoute,

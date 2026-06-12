@@ -12,11 +12,12 @@ interface Tab {
 
 const TABS: Tab[] = [
   { to: '/calendar', label: 'Kalender',   icon: Calendar },
-  { to: '/messages', label: 'Nachrichten',icon: MessageSquare },
+  { to: '/posteingang', label: 'Nachrichten',icon: MessageSquare },
   { to: '/cleaning', label: 'Reinigung',  icon: SprayCan },
   { to: '/menu',     label: 'Menü',       icon: Menu,
     matchPaths: ['/', '/overview', '/apartments', '/channels', '/settings',
-      '/reviews', '/teammates', '/notifications'] },
+      '/reviews', '/teammates', '/notifications', '/messages', '/rechnungen',
+      '/ki-gastnachrichten', '/listing-links', '/statistik'] },
 ];
 
 /**

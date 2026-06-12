@@ -47,8 +47,8 @@ export function MessagesPage() {
   return (
     <>
       <PageHeader
-        title="Nachrichten"
-        subtitle="Gast-Inbox (über Channex) und automatische Nachrichten-Vorlagen."
+        title="Nachrichten-Archiv"
+        subtitle="Channex-Inbox (Fallback) und automatische Nachrichten-Vorlagen."
         action={
           <div
             className="inline-flex rounded-lg border border-line bg-surface p-0.5"
