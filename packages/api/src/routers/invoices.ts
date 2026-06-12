@@ -179,6 +179,20 @@ export const invoicesRouter = router({
     )[0]!;
   }),
 
+  /** Upload / replace / clear the invoice logo (base64 data URL, PNG/JPEG). */
+  setLogo: adminProcedure
+    .input(z.object({ logoImageData: z.string().max(1_400_000).nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db
+        .insert(tenantInvoiceSettings)
+        .values({ tenantId: ctx.tenantId!, logoImageData: input.logoImageData })
+        .onConflictDoUpdate({
+          target: tenantInvoiceSettings.tenantId,
+          set: { logoImageData: input.logoImageData, updatedAt: new Date() },
+        });
+      return { ok: true };
+    }),
+
   /** What the invoice would look like for a booking (or the issued one). */
   forBooking: tenantProcedure
     .input(z.object({ bookingId: z.string().uuid() }))

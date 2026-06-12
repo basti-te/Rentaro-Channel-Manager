@@ -21,7 +21,10 @@ const MUTED = '#6b6b6b';
 const LINE = '#d9d9d9';
 const ZEBRA = '#f4f3f1';
 
-export function renderInvoicePdf(inv: InvoiceRow): Promise<Buffer> {
+export function renderInvoicePdf(
+  inv: InvoiceRow,
+  logoImageData?: string | null,
+): Promise<Buffer> {
   const iss = (inv.issuerSnapshot ?? {}) as IssuerSnapshot;
   const cur = inv.currency;
   const money = (c: bigint | number) => formatInvoiceMoney(Number(c), cur);
@@ -33,12 +36,26 @@ export function renderInvoicePdf(inv: InvoiceRow): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // ── Wordmark (top-right) ───────────────────────────────────────────────
-    doc.fillColor(INK).font('Helvetica-Bold').fontSize(20);
-    doc.text((iss.logoText ?? iss.issuerName ?? '').toUpperCase(), M, 55, {
-      width: RIGHT - M,
-      align: 'right',
-    });
+    // ── Logo image (top-right) with wordmark fallback ──────────────────────
+    let drewLogo = false;
+    if (logoImageData) {
+      try {
+        const base64 = logoImageData.includes(',')
+          ? logoImageData.slice(logoImageData.indexOf(',') + 1)
+          : logoImageData;
+        doc.image(Buffer.from(base64, 'base64'), RIGHT - 180, 40, { fit: [180, 64] });
+        drewLogo = true;
+      } catch {
+        drewLogo = false;
+      }
+    }
+    if (!drewLogo) {
+      doc.fillColor(INK).font('Helvetica-Bold').fontSize(20);
+      doc.text((iss.logoText ?? iss.issuerName ?? '').toUpperCase(), M, 55, {
+        width: RIGHT - M,
+        align: 'right',
+      });
+    }
 
     // ── Sender line + recipient ────────────────────────────────────────────
     let y = 175;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Copy, Check, Sparkles } from 'lucide-react';
 
@@ -132,6 +132,28 @@ export function InvoicesPage() {
     onError: (e) => toast.error(e.message),
   });
 
+  const fileRef = useRef<HTMLInputElement>(null);
+  const setLogo = trpc.invoices.setLogo.useMutation({
+    onSuccess: () => {
+      toast.success('Logo gespeichert');
+      void utils.invoices.settings.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const onLogoFile = (file: File) => {
+    if (!/^image\/(png|jpeg)$/.test(file.type)) {
+      toast.error('Bitte PNG oder JPEG');
+      return;
+    }
+    if (file.size > 800_000) {
+      toast.error('Logo zu groß (max ~800 KB)');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setLogo.mutate({ logoImageData: String(reader.result) });
+    reader.readAsDataURL(file);
+  };
+
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -251,6 +273,54 @@ export function InvoicesPage() {
               <div className="mt-3 space-y-1.5">
                 <Label>Anschrift (mehrzeilig)</Label>
                 <textarea className={AREA_CLS} rows={3} disabled={!isAdmin} value={form.issuerAddress} onChange={(e) => set('issuerAddress', e.target.value)} placeholder={'Am Schlangenberg 3\n45136 Essen\nDeutschland'} />
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <Label>Logo (PNG/JPEG, optional)</Label>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {settingsQ.data?.logoImageData ? (
+                    <img
+                      src={settingsQ.data.logoImageData}
+                      alt="Logo"
+                      className="h-12 max-w-[180px] object-contain rounded border border-line bg-white p-1"
+                    />
+                  ) : (
+                    <span className="text-[12px] text-whisper">
+                      Kein Logo — es wird die Wortmarke verwendet.
+                    </span>
+                  )}
+                  {isAdmin && (
+                    <>
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        accept="image/png,image/jpeg"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) onLogoFile(f);
+                          e.target.value = '';
+                        }}
+                      />
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={setLogo.isPending}
+                        onClick={() => fileRef.current?.click()}
+                      >
+                        Logo hochladen
+                      </Button>
+                      {settingsQ.data?.logoImageData && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setLogo.mutate({ logoImageData: null })}
+                        >
+                          Entfernen
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             </SectionCard>
 

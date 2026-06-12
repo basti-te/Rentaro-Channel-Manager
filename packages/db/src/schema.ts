@@ -1312,6 +1312,9 @@ export const tenantInvoiceSettings = pgTable('tenant_invoice_settings', {
   issuerAddress: text('issuer_address'),
   senderLine: text('sender_line'),
   logoText: text('logo_text'),
+  /** Optional uploaded logo (base64 data URL, PNG/JPEG) rendered on the PDF;
+   *  falls back to the logoText wordmark when empty. */
+  logoImageData: text('logo_image_data'),
   contactPerson: text('contact_person'),
   taxId: text('tax_id'),
   taxNumber: text('tax_number'),

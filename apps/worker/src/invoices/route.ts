@@ -9,7 +9,7 @@
  */
 import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
-import { createDb, guestInvoices } from '@cm/db';
+import { createDb, guestInvoices, tenantInvoiceSettings } from '@cm/db';
 import { env } from '../env';
 import { renderInvoicePdf } from './pdf';
 
@@ -30,7 +30,12 @@ invoicesRoute.get('/:file', async (c) => {
     return c.json({ error: 'not_found' }, 404);
   }
 
-  const pdf = await renderInvoicePdf(inv);
+  const [settings] = await db
+    .select({ logo: tenantInvoiceSettings.logoImageData })
+    .from(tenantInvoiceSettings)
+    .where(eq(tenantInvoiceSettings.tenantId, inv.tenantId))
+    .limit(1);
+  const pdf = await renderInvoicePdf(inv, settings?.logo ?? null);
   return new Response(new Uint8Array(pdf), {
     headers: {
       'Content-Type': 'application/pdf',
