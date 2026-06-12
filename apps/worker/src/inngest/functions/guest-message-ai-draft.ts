@@ -76,7 +76,7 @@ function buildSystem(
     'Beantworte Fragen NUR anhand der unten stehenden Fakten und allgemeiner Höflichkeit. Erfinde nichts — keine Codes, Adressen oder Regeln, die nicht dastehen.',
     'Wenn du etwas nicht sicher weißt, es Sache des Gastgebers ist, oder es eine Beschwerde bzw. heikle Lage ist: sage freundlich, dass du es an den Gastgeber weiterleitest. Rate nicht.',
     roles.length > 0
-      ? 'Wenn aus dem Gespräch eine konkrete operative Aufgabe entsteht, die eine Kraft erfordert (z. B. fehlende Handtücher, ein Defekt, Reinigung), nutze das Tool notify_teammate, um die passende Kraft im Hintergrund zu informieren — und bestätige dem Gast knapp, dass du dich darum kümmerst. Nutze das Tool nur, wenn wirklich eine Kraft nötig ist.'
+      ? 'Wenn aus dem Gespräch eine konkrete operative Aufgabe entsteht, die eine Kraft erfordert (z. B. fehlende Handtücher, ein Defekt, Reinigung), nutze das Tool notify_teammate EINMALIG je Kraft, um sie im Hintergrund zu informieren — und bestätige dem Gast knapp, dass du dich darum kümmerst. Nenne dabei KEINE selbst berechneten Daten; verwende nur die Daten aus den FAKTEN. Nutze das Tool nur, wenn wirklich eine Kraft nötig ist, und rufe es nicht mehrfach für dieselbe Sache auf.'
       : '',
     'Halte dich kurz, klar und natürlich.',
     '',
@@ -263,7 +263,15 @@ async function run(
   const ai = await draftReply(env.ANTHROPIC_MODEL ?? DEFAULT_MODEL, system, thread, roles);
 
   // ── Execute dispatches (background informing) ───────────────────────────
-  for (const d of ai.dispatches) {
+  // Collapse repeated notify_teammate calls in one run to ONE per role, so a
+  // single event can never fan out into a burst of near-identical SMS.
+  const seenRoles = new Set<string>();
+  const dispatches = ai.dispatches.filter((d) => {
+    if (seenRoles.has(d.role)) return false;
+    seenRoles.add(d.role);
+    return true;
+  });
+  for (const d of dispatches) {
     const recipients = team.filter((t) => t.role === d.role);
     if (recipients.length === 0) {
       await db.insert(teammateDispatches).values({
@@ -317,7 +325,7 @@ async function run(
     }
   }
 
-  if (!ai.reply) return { drafted: false, dispatches: ai.dispatches.length };
+  if (!ai.reply) return { drafted: false, dispatches: dispatches.length };
 
   // Replace any prior open draft for this booking with the fresh one.
   await db
@@ -341,7 +349,7 @@ async function run(
         status: 'sent',
         aiGenerated: true,
       });
-      return { drafted: true, autoSent: true, dispatches: ai.dispatches.length };
+      return { drafted: true, autoSent: true, dispatches: dispatches.length };
     } catch (e) {
       await db.insert(guestMessages).values({
         tenantId,
@@ -353,7 +361,7 @@ async function run(
         aiGenerated: true,
         error: e instanceof Error ? e.message : String(e),
       });
-      return { drafted: true, autoSent: false, dispatches: ai.dispatches.length };
+      return { drafted: true, autoSent: false, dispatches: dispatches.length };
     }
   }
 
@@ -366,7 +374,7 @@ async function run(
     status: 'draft',
     aiGenerated: true,
   });
-  return { drafted: true, autoSent: false, dispatches: ai.dispatches.length };
+  return { drafted: true, autoSent: false, dispatches: dispatches.length };
 }
 
 export const guestMessageAiDraft = inngest.createFunction(

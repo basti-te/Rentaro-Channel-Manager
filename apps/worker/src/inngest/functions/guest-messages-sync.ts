@@ -81,10 +81,17 @@ async function syncBooking(
     if (rows.length === 0) continue; // already ingested
     inserted++;
     if (direction === 'inbound') {
-      await inngest.send({
-        name: 'guest-messages/incoming',
-        data: { guestMessageId: rows[0]!.id, bookingId: b.id, tenantId: b.tenantId },
-      });
+      // Only RECENT inbound messages trigger the AI assistant. Old threads pulled
+      // in by a window/webhook catch-up are ingested for the inbox but must NOT
+      // retroactively fire drafts / auto-sends / teammate dispatches.
+      const ts = parseTs(m.attributes?.inserted_at);
+      const recent = !ts || ts.getTime() > Date.now() - 48 * 3_600_000;
+      if (recent) {
+        await inngest.send({
+          name: 'guest-messages/incoming',
+          data: { guestMessageId: rows[0]!.id, bookingId: b.id, tenantId: b.tenantId },
+        });
+      }
     }
   }
   return inserted;
