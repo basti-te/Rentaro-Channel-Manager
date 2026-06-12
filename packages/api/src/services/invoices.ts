@@ -99,6 +99,14 @@ export interface InvoiceBasis {
 const toNum = (x: bigint | number | null | undefined): number | null =>
   x == null ? null : Number(x);
 
+/** Parse `attributes.ota_commission` (major units) from a raw Channex payload. */
+function otaCommissionFromPayload(rawPayload: unknown): number | null {
+  const c = (rawPayload as { attributes?: { ota_commission?: unknown } } | null)?.attributes
+    ?.ota_commission;
+  const n = typeof c === 'string' ? parseFloat(c) : typeof c === 'number' ? c : NaN;
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+}
+
 /**
  * Derive the (gross total, cleaning) to invoice for a booking. The total is the
  * anchor; the breakdown reconciles to it exactly. Per source:
@@ -114,6 +122,7 @@ export function invoiceBasisForBooking(
   b: {
     source: string;
     priceCents: bigint | number | null;
+    otaCommissionCents?: bigint | number | null;
     nightlyRateCents: bigint | number | null;
     cleaningFeeCents: bigint | number | null;
     invoiceGrossOverrideCents?: bigint | number | null;
@@ -122,6 +131,7 @@ export function invoiceBasisForBooking(
   },
   nights: number,
   cityTaxRateBp: number,
+  airbnbAmountIsGross = false,
 ): InvoiceBasis {
   const cityRate = cityTaxRateBp / 10_000;
   const amount = toNum(b.priceCents);
@@ -138,7 +148,26 @@ export function invoiceBasisForBooking(
       grossTotal = lodging + Math.round(lodging * cityRate) + cleaning;
     }
   } else if (b.source === 'airbnb') {
-    grossTotal = days != null && days > 0 ? days + Math.round(days * cityRate) : null;
+    if (airbnbAmountIsGross) {
+      // Channex "Total Amount": `amount` is already the guest-paid gross (BDC-like).
+      grossTotal = amount;
+      if (amount != null && days != null && days > 0) {
+        cleaning = Math.max(0, amount - days - Math.round(days * cityRate));
+      }
+    } else {
+      // Channex "Payout Amount": gross = payout + Airbnb commission.
+      const commission =
+        toNum(b.otaCommissionCents) ?? otaCommissionFromPayload(b.rawPayload) ?? 0;
+      grossTotal =
+        amount != null
+          ? amount + commission
+          : days != null && days > 0
+            ? days + Math.round(days * cityRate)
+            : null;
+      // Cleaning at payout level (amount − per-night lodging); the lodging line
+      // absorbs the commission so the total reconciles to the gross.
+      if (amount != null && days != null && days > 0) cleaning = Math.max(0, amount - days);
+    }
   } else {
     grossTotal = amount;
     if (amount != null && days != null && days > 0) {

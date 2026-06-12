@@ -1,0 +1,1 @@
+ALTER TABLE "tenant_invoice_settings" ADD COLUMN "airbnb_amount_is_gross" boolean DEFAULT false NOT NULL;

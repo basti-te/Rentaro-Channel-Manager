@@ -39,6 +39,7 @@ const settingsInput = z.object({
   vatMode: z.enum(['regular', 'kleinunternehmer']).optional(),
   vatRateBp: z.number().int().min(0).max(2500).optional(),
   cityTaxRateBp: z.number().int().min(0).max(2500).optional(),
+  airbnbAmountIsGross: z.boolean().optional(),
   lodgingLabel: z.string().max(80).optional(),
   cityTaxLabel: z.string().max(80).optional(),
   cleaningLabel: z.string().max(80).optional(),

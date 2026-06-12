@@ -1323,6 +1323,11 @@ export const tenantInvoiceSettings = pgTable('tenant_invoice_settings', {
   vatMode: text('vat_mode').notNull().default('regular'), // 'regular' | 'kleinunternehmer'
   vatRateBp: integer('vat_rate_bp').notNull().default(700),
   cityTaxRateBp: integer('city_tax_rate_bp').notNull().default(500),
+  /** Airbnb interpretation, matching the Channex channel "Booking Total Type":
+   *  false (default, "Payout Amount") → `amount` is the payout, gross =
+   *  amount + ota_commission. true ("Total Amount") → `amount` is already the
+   *  guest-paid gross. Set this to match the channel config at onboarding. */
+  airbnbAmountIsGross: boolean('airbnb_amount_is_gross').notNull().default(false),
 
   // Line-item labels
   lodgingLabel: text('lodging_label').notNull().default('Übernachtung'),

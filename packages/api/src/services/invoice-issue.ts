@@ -70,6 +70,7 @@ async function loadContext(db: Database, tenantId: string, bookingId: string) {
         checkout: bookings.checkout,
         currency: bookings.currency,
         priceCents: bookings.priceCents,
+        otaCommissionCents: bookings.otaCommissionCents,
         nightlyRateCents: bookings.nightlyRateCents,
         cleaningFeeCents: bookings.cleaningFeeCents,
         invoiceGrossOverrideCents: bookings.invoiceGrossOverrideCents,
@@ -140,7 +141,12 @@ export async function previewInvoice(
     vatRateBp: settings?.vatRateBp ?? 700,
     cityTaxRateBp: settings?.cityTaxRateBp ?? 500,
   };
-  const basis = invoiceBasisForBooking(bk, nights, cfg.cityTaxRateBp);
+  const basis = invoiceBasisForBooking(
+    bk,
+    nights,
+    cfg.cityTaxRateBp,
+    settings?.airbnbAmountIsGross ?? false,
+  );
   if (!basis.confident) {
     return { confident: false, reason: 'no_amount', ...base, nights };
   }
@@ -190,7 +196,12 @@ export async function issueInvoiceForBooking(
   if (bk.source === 'block') throw new InvoiceIssueError('block');
 
   const nights = nightsBetween(bk.checkin, bk.checkout);
-  const basis = invoiceBasisForBooking(bk, nights, settings.cityTaxRateBp);
+  const basis = invoiceBasisForBooking(
+    bk,
+    nights,
+    settings.cityTaxRateBp,
+    settings.airbnbAmountIsGross,
+  );
   if (!basis.confident) throw new InvoiceIssueError('no_amount');
 
   const b = computeInvoiceBreakdown(basis.grossTotalCents, basis.cleaningGrossCents, {

@@ -34,6 +34,7 @@ interface FormState {
   footerBank: string;
   closingNote: string;
   lookupRequireCode: boolean;
+  airbnbAmountIsGross: boolean;
 }
 
 const EMPTY: FormState = {
@@ -58,6 +59,7 @@ const EMPTY: FormState = {
   footerBank: '',
   closingNote: 'Der Rechnungsbetrag wurde bereits bezahlt.\nVielen Dank.',
   lookupRequireCode: false,
+  airbnbAmountIsGross: false,
 };
 
 /** One-click template for the primary operator (CITY APARTMENTS ESSEN). */
@@ -120,6 +122,7 @@ export function InvoicesPage() {
       footerBank: r.footerBank ?? '',
       closingNote: r.closingNote,
       lookupRequireCode: r.lookupRequireCode,
+      airbnbAmountIsGross: r.airbnbAmountIsGross,
     });
   }, [settingsQ.data]);
 
@@ -183,6 +186,7 @@ export function InvoicesPage() {
       footerBank: form.footerBank,
       closingNote: form.closingNote,
       lookupRequireCode: form.lookupRequireCode,
+      airbnbAmountIsGross: form.airbnbAmountIsGross,
     });
   };
 
@@ -342,6 +346,21 @@ export function InvoicesPage() {
                 </div>
                 <Field label="USt-Satz (%)" value={form.vatRatePct} onChange={(v) => set('vatRatePct', v)} disabled={!isAdmin || form.vatMode === 'kleinunternehmer'} />
                 <Field label="City-Tax (%)" value={form.cityTaxRatePct} onChange={(v) => set('cityTaxRatePct', v)} disabled={!isAdmin} />
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3">
+                <span className="text-[13px] text-ink-soft">
+                  Airbnb: Channex liefert den Gesamtbetrag
+                  <span className="block text-[11.5px] text-whisper">
+                    An = „Booking Total Type: Total Amount" (amount = Brutto). Aus = „Payout
+                    Amount" (Brutto = Auszahlung + Provision). Muss zum Channex-Kanal passen.
+                  </span>
+                </span>
+                <Switch
+                  checked={form.airbnbAmountIsGross}
+                  disabled={!isAdmin}
+                  onChange={(v) => set('airbnbAmountIsGross', v)}
+                  aria-label="Airbnb Gesamtbetrag"
+                />
               </div>
             </SectionCard>
 
