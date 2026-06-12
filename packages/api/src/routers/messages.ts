@@ -15,7 +15,7 @@ import { createChannexClient, ChannexError } from '@cm/channex';
 import { router, tenantProcedure, editorProcedure } from '../trpc';
 import { dispatchDisposition } from '../services/triggers';
 import { buildBookingVars, renderTemplate } from '../services/templates';
-import { isTemplateEnabledForBooking } from '../services/scope';
+import { isTemplateEnabledForBooking, isChannelApplicableToSource } from '../services/scope';
 import { resolveCustomVars } from '../services/custom-vars';
 import { sendSms } from '../services/twilio';
 import { checkSmsCountry } from '../services/sms-allowlist';
@@ -107,6 +107,7 @@ export const messagesRouter = router({
             id: bookings.id,
             tenantId: bookings.tenantId,
             propertyId: bookings.propertyId,
+            source: bookings.source,
             guestName: bookings.guestName,
             checkin: bookings.checkin,
             checkout: bookings.checkout,
@@ -230,6 +231,12 @@ export const messagesRouter = router({
       // Every active template is listed (so the booking detail can toggle
       // it on/off for this booking); status reflects scope/override/rows.
       for (const t of tpls) {
+        const row = rowByTpl.get(t.id);
+        // An OTA template only reaches a booking from that same OTA (Channex
+        // posts into the booking's one real chat). Hide the non-matching OTA
+        // templates for this booking so the timeline mirrors what the dispatcher
+        // actually does — but keep any row that was already sent visible.
+        if (!row && !isChannelApplicableToSource(t.channel, bk.source)) continue;
         const overrideVal = overrideByTpl.get(t.id);
         const enabled = isTemplateEnabledForBooking({
           propertyId: bk.propertyId,
@@ -239,7 +246,6 @@ export const messagesRouter = router({
           override: overrideVal,
         });
         const overridden = overrideVal !== undefined;
-        const row = rowByTpl.get(t.id);
         // Mirror the dispatcher's real decision (incl. the 2-day grace) so the
         // label is honest: planned / about-to-send / overdue-needs-manual / n/a.
         const { due, disposition } = dispatchDisposition(
@@ -407,6 +413,7 @@ export const messagesRouter = router({
         await ctx.db
           .select({
             propertyId: bookings.propertyId,
+            source: bookings.source,
             guestName: bookings.guestName,
             guestPhone: bookings.guestPhone,
             checkin: bookings.checkin,
@@ -438,6 +445,17 @@ export const messagesRouter = router({
           .limit(1)
       )[0];
       if (!tpl) throw new TRPCError({ code: 'NOT_FOUND' });
+
+      // An OTA template is delivered into the booking's own OTA chat (Channex
+      // routes by booking). Sending e.g. an Airbnb template on a Booking.com
+      // booking would land in the Booking.com chat — wrong channel, and a
+      // duplicate of the booking_com template. Block that mismatch.
+      if (!isChannelApplicableToSource(tpl.channel, bk.source)) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Diese Vorlage (Kanal „${tpl.channel}") passt nicht zur Buchungsquelle „${bk.source}".`,
+        });
+      }
 
       // Don't silently double-message a guest.
       const existing = (

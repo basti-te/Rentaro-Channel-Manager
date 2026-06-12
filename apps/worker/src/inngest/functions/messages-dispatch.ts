@@ -31,6 +31,7 @@ import {
   dispatchDisposition,
   sendSms,
   isTemplateEnabledForBooking,
+  isChannelApplicableToSource,
   resolveCustomVars,
   loadAllowedSmsCountries,
   resolveSmsCountry,
@@ -141,6 +142,7 @@ async function dispatch(): Promise<DispatchResult> {
         id: bookings.id,
         tenantId: bookings.tenantId,
         propertyId: bookings.propertyId,
+        source: bookings.source,
         guestName: bookings.guestName,
         guestPhone: bookings.guestPhone,
         checkin: bookings.checkin,
@@ -174,6 +176,11 @@ async function dispatch(): Promise<DispatchResult> {
         })
       )
         continue;
+      // An OTA template is posted into the booking's one real OTA chat (Channex
+      // routes by booking, not by channel). So a booking_com template must only
+      // fire for booking_com bookings and an airbnb template only for airbnb —
+      // otherwise both land in the same chat and the guest is messaged twice.
+      if (!isChannelApplicableToSource(t.channel, b.source)) continue;
       // Same decision (incl. the 2-day grace) the booking-detail timeline shows,
       // so the UI label always matches what actually happens here.
       const { due: dueAt, disposition } = dispatchDisposition(

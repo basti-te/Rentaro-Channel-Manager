@@ -103,7 +103,7 @@ export {
   type NotifyOutcome,
   type BookingNotificationContext,
 } from './services/notifications';
-export { isTemplateEnabledForBooking } from './services/scope';
+export { isTemplateEnabledForBooking, isChannelApplicableToSource } from './services/scope';
 export { resolveCustomVars, CUSTOM_VAR_KEY_RE } from './services/custom-vars';
 
 // Shared cleaning helpers — reused by the worker's cleaning-dispatch cron.

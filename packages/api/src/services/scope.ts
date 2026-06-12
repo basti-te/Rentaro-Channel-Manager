@@ -20,3 +20,26 @@ export function isTemplateEnabledForBooking(opts: {
   if (opts.override === false) return false;
   return opts.scopedPropertyIds.has(opts.propertyId);
 }
+
+/**
+ * Whether a template's channel can be delivered to a booking from a given OTA
+ * source.
+ *
+ * OTA-channel templates (`airbnb` / `booking_com`) are posted into the
+ * booking's OTA chat via Channex `sendMessage(bookingId, …)`, which routes
+ * purely by booking — it takes no channel argument. So an OTA template must
+ * only target bookings that actually came from that OTA; otherwise a single
+ * booking receives EVERY OTA template (both the airbnb and the booking_com
+ * one) in its one real chat — i.e. the guest sees each automated message
+ * duplicated. (This was the Booking.com check-in/-out double-send.)
+ *
+ * SMS / email are medium-based (phone / address), not OTA-bound, so they apply
+ * to bookings from any source.
+ */
+export function isChannelApplicableToSource(
+  channel: 'sms' | 'airbnb' | 'booking_com' | 'email',
+  source: string,
+): boolean {
+  if (channel === 'airbnb' || channel === 'booking_com') return source === channel;
+  return true;
+}
