@@ -27,6 +27,7 @@ interface FormState {
   lodgingLabel: string;
   cityTaxLabel: string;
   cleaningLabel: string;
+  defaultCleaningEuro: string;
   numberPrefix: string;
   nextSeq: string;
   footerContact: string;
@@ -52,6 +53,7 @@ const EMPTY: FormState = {
   lodgingLabel: 'Übernachtung',
   cityTaxLabel: 'Übernachtungssteuer',
   cleaningLabel: 'Endreinigung',
+  defaultCleaningEuro: '',
   numberPrefix: 'RE-',
   nextSeq: '1',
   footerContact: '',
@@ -115,6 +117,12 @@ export function InvoicesPage() {
       lodgingLabel: r.lodgingLabel,
       cityTaxLabel: r.cityTaxLabel,
       cleaningLabel: r.cleaningLabel,
+      defaultCleaningEuro:
+        r.defaultCleaningCents != null
+          ? (Number(r.defaultCleaningCents) / 100).toLocaleString('de-DE', {
+              minimumFractionDigits: 2,
+            })
+          : '',
       numberPrefix: r.numberPrefix,
       nextSeq: String(r.nextSeq),
       footerContact: r.footerContact ?? '',
@@ -179,6 +187,10 @@ export function InvoicesPage() {
       lodgingLabel: form.lodgingLabel.trim() || 'Übernachtung',
       cityTaxLabel: form.cityTaxLabel.trim() || 'Übernachtungssteuer',
       cleaningLabel: form.cleaningLabel.trim() || 'Endreinigung',
+      defaultCleaningCents:
+        form.defaultCleaningEuro.trim() === ''
+          ? null
+          : Math.round((parseFloat(form.defaultCleaningEuro.replace(',', '.')) || 0) * 100),
       numberPrefix: form.numberPrefix,
       nextSeq: seq,
       footerContact: form.footerContact,
@@ -370,6 +382,7 @@ export function InvoicesPage() {
                 <Field label="Label Übernachtung" value={form.lodgingLabel} onChange={(v) => set('lodgingLabel', v)} disabled={!isAdmin} />
                 <Field label="Label City-Tax" value={form.cityTaxLabel} onChange={(v) => set('cityTaxLabel', v)} disabled={!isAdmin} />
                 <Field label="Label Reinigung" value={form.cleaningLabel} onChange={(v) => set('cleaningLabel', v)} disabled={!isAdmin} />
+                <Field label="Standard-Reinigung (€)" value={form.defaultCleaningEuro} onChange={(v) => set('defaultCleaningEuro', v)} disabled={!isAdmin} placeholder="40,00" />
                 <Field label="Nummern-Präfix" value={form.numberPrefix} onChange={(v) => set('numberPrefix', v)} disabled={!isAdmin} placeholder="RE-" />
                 <Field label="Nächste Nummer" value={form.nextSeq} onChange={(v) => set('nextSeq', v)} disabled={!isAdmin} />
               </div>

@@ -232,6 +232,13 @@
       "when": 1781277812110,
       "tag": "0032_naive_fixer",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1781289446958,
+      "tag": "0033_dapper_silver_sable",
+      "breakpoints": true
     }
   ]
 }

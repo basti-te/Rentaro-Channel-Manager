@@ -146,6 +146,7 @@ export async function previewInvoice(
     nights,
     cfg.cityTaxRateBp,
     settings?.airbnbAmountIsGross ?? false,
+    settings?.defaultCleaningCents != null ? Number(settings.defaultCleaningCents) : null,
   );
   if (!basis.confident) {
     return { confident: false, reason: 'no_amount', ...base, nights };
@@ -201,6 +202,7 @@ export async function issueInvoiceForBooking(
     nights,
     settings.cityTaxRateBp,
     settings.airbnbAmountIsGross,
+    settings.defaultCleaningCents != null ? Number(settings.defaultCleaningCents) : null,
   );
   if (!basis.confident) throw new InvoiceIssueError('no_amount');
 

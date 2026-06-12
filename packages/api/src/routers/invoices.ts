@@ -40,6 +40,7 @@ const settingsInput = z.object({
   vatRateBp: z.number().int().min(0).max(2500).optional(),
   cityTaxRateBp: z.number().int().min(0).max(2500).optional(),
   airbnbAmountIsGross: z.boolean().optional(),
+  defaultCleaningCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
   lodgingLabel: z.string().max(80).optional(),
   cityTaxLabel: z.string().max(80).optional(),
   cleaningLabel: z.string().max(80).optional(),
@@ -148,6 +149,11 @@ export const invoicesRouter = router({
     const patch: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(input)) {
       if (v !== undefined) patch[k] = v;
+    }
+    // bigint column needs a bigint, not the plain number from the input.
+    if (input.defaultCleaningCents !== undefined) {
+      patch.defaultCleaningCents =
+        input.defaultCleaningCents == null ? null : BigInt(input.defaultCleaningCents);
     }
 
     const existing = (

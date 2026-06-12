@@ -132,6 +132,7 @@ export function invoiceBasisForBooking(
   nights: number,
   cityTaxRateBp: number,
   airbnbAmountIsGross = false,
+  defaultCleaningCents: number | null = null,
 ): InvoiceBasis {
   const cityRate = cityTaxRateBp / 10_000;
   const amount = toNum(b.priceCents);
@@ -173,6 +174,11 @@ export function invoiceBasisForBooking(
     if (amount != null && days != null && days > 0) {
       cleaning = Math.max(0, amount - days - Math.round(days * cityRate));
     }
+  }
+
+  // Fall back to the tenant default cleaning when none could be derived.
+  if (cleaning <= 0 && defaultCleaningCents != null && defaultCleaningCents > 0) {
+    cleaning = defaultCleaningCents;
   }
 
   // Operator overrides win (persisted → the portal uses them too).

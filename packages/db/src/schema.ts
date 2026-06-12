@@ -1333,6 +1333,10 @@ export const tenantInvoiceSettings = pgTable('tenant_invoice_settings', {
   lodgingLabel: text('lodging_label').notNull().default('Übernachtung'),
   cityTaxLabel: text('city_tax_label').notNull().default('Übernachtungssteuer'),
   cleaningLabel: text('cleaning_label').notNull().default('Endreinigung'),
+  /** Default cleaning fee (cents), used when a booking's cleaning can't be
+   *  derived from Channex data. Also pre-fills the per-booking "Reinigung"
+   *  field. NULL = no default. */
+  defaultCleaningCents: bigint('default_cleaning_cents', { mode: 'bigint' }),
 
   // Numbering
   numberPrefix: text('number_prefix').notNull().default('RE-'),

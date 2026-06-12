@@ -1,0 +1,1 @@
+ALTER TABLE "tenant_invoice_settings" ADD COLUMN "default_cleaning_cents" bigint;
