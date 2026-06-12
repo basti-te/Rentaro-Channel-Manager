@@ -10,6 +10,7 @@ import { inngest, inngestFunctions } from './inngest';
 import { channexWebhook } from './webhooks/channex';
 import { twilioWebhook } from './webhooks/twilio';
 import { stripeWebhook } from './webhooks/stripe';
+import { invoicesRoute } from './invoices/route';
 
 const app = new Hono();
 
@@ -56,6 +57,9 @@ app.all('/trpc/*', async (c) => {
 app.route('/api/webhooks/channex', channexWebhook);
 app.route('/api/webhooks/twilio', twilioWebhook);
 app.route('/api/webhooks/stripe', stripeWebhook);
+
+// ── Guest-invoice PDF download (public, token-gated) ─────────────────────────
+app.route('/api/invoices', invoicesRoute);
 
 const port = env.PORT;
 console.log(`→ API server on http://localhost:${port}`);

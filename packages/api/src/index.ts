@@ -20,6 +20,7 @@ import { reviewTemplatesRouter } from './routers/review-templates';
 import { outboundReviewsRouter } from './routers/outbound-reviews';
 import { billingRouter } from './routers/billing';
 import { channelsRouter } from './routers/channels';
+import { invoicesRouter } from './routers/invoices';
 
 export const appRouter = router({
   me: meRouter,
@@ -43,6 +44,7 @@ export const appRouter = router({
   outboundReviews: outboundReviewsRouter,
   billing: billingRouter,
   channels: channelsRouter,
+  invoices: invoicesRouter,
 });
 
 export type AppRouter = typeof appRouter;
@@ -149,6 +151,16 @@ export {
   type InvoiceBreakdown,
   type InvoiceBasis,
 } from './services/invoices';
+
+// Guest-invoice issuing (numbering + snapshot) — used by the API + worker.
+export {
+  previewInvoice,
+  issueInvoiceForBooking,
+  InvoiceIssueError,
+  type InvoiceRecipient,
+  type InvoicePreview,
+  type IssuerSnapshot,
+} from './services/invoice-issue';
 
 // ARI outbox enqueue — reused by the worker's booking-feed ingest so an
 // inbound OTA booking/cancellation pushes availability to Channex immediately
