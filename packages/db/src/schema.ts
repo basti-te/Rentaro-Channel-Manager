@@ -1357,8 +1357,7 @@ export const guestInvoices = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     bookingId: uuid('booking_id')
       .notNull()
-      .references(() => bookings.id, { onDelete: 'cascade' })
-      .unique(),
+      .references(() => bookings.id, { onDelete: 'cascade' }),
     /** Sequential, human-facing number (e.g. "RE-1042"). Unique per tenant. */
     number: text('number').notNull(),
     status: text('status').notNull().default('issued'), // 'issued' | 'void'
@@ -1408,6 +1407,11 @@ export const guestInvoices = pgTable(
   (t) => ({
     byTenant: index('guest_invoices_tenant_idx').on(t.tenantId),
     byNumber: uniqueIndex('guest_invoices_number_idx').on(t.tenantId, t.number),
+    // At most one ISSUED invoice per booking. Voided ones remain on record and
+    // free the booking for a corrected re-issue.
+    activeBooking: uniqueIndex('guest_invoices_active_booking_idx')
+      .on(t.bookingId)
+      .where(sql`status = 'issued'`),
   }),
 );
 

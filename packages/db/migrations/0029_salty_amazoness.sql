@@ -1,0 +1,2 @@
+ALTER TABLE "guest_invoices" DROP CONSTRAINT "guest_invoices_booking_id_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "guest_invoices_active_booking_idx" ON "guest_invoices" USING btree ("booking_id") WHERE status = 'issued';

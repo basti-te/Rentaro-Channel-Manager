@@ -42,6 +42,17 @@ export function InvoiceSection({
     onError: (e) => toast.error(e.message),
   });
 
+  const meQ = trpc.me.current.useQuery();
+  const role = meQ.data?.memberships?.[0]?.role;
+  const isAdmin = role === 'owner' || role === 'admin';
+  const voidM = trpc.invoices.voidInvoice.useMutation({
+    onSuccess: () => {
+      toast.success('Rechnung storniert');
+      void utils.invoices.forBooking.invalidate({ bookingId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   if (!q.data || q.data.reason === 'block') return null;
   const d = q.data;
 
@@ -55,20 +66,35 @@ export function InvoiceSection({
   );
 
   if (d.existing) {
+    const inv = d.existing;
     return wrap(
       <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-canvas/60 px-3 py-2.5">
         <div className="min-w-0">
-          <div className="num text-[13px] text-ink">{d.existing.number}</div>
-          {d.existing.status === 'void' && (
-            <div className="text-[11px] text-negative">storniert</div>
-          )}
+          <div className="num text-[13px] text-ink">{inv.number}</div>
+          {inv.status === 'void' && <div className="text-[11px] text-negative">storniert</div>}
         </div>
-        {d.existing.status !== 'void' && (
-          <a href={invoicePdfUrl(d.existing.token)} target="_blank" rel="noopener noreferrer">
-            <Button variant="secondary" size="sm" iconLeft={<Download className="h-4 w-4" />}>
-              PDF
-            </Button>
-          </a>
+        {inv.status !== 'void' && (
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button
+                type="button"
+                className="text-[12px] text-muted hover:text-negative transition-colors disabled:opacity-50"
+                disabled={voidM.isPending}
+                onClick={() => {
+                  if (confirm(`Rechnung ${inv.number} stornieren?`)) {
+                    voidM.mutate({ invoiceId: inv.id });
+                  }
+                }}
+              >
+                Stornieren
+              </button>
+            )}
+            <a href={invoicePdfUrl(inv.token)} target="_blank" rel="noopener noreferrer">
+              <Button variant="secondary" size="sm" iconLeft={<Download className="h-4 w-4" />}>
+                PDF
+              </Button>
+            </a>
+          </div>
         )}
       </div>,
     );

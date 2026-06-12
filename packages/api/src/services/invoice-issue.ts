@@ -89,7 +89,7 @@ export interface InvoicePreview {
   apartmentName: string;
   currency: string;
   breakdown: ReturnType<typeof computeInvoiceBreakdown> | null;
-  existing: { number: string; token: string; status: string } | null;
+  existing: { id: string; number: string; token: string; status: string } | null;
   enabled: boolean;
 }
 
@@ -104,12 +104,13 @@ export async function previewInvoice(
     (
       await db
         .select({
+          id: guestInvoices.id,
           number: guestInvoices.number,
           token: guestInvoices.token,
           status: guestInvoices.status,
         })
         .from(guestInvoices)
-        .where(eq(guestInvoices.bookingId, bookingId))
+        .where(and(eq(guestInvoices.bookingId, bookingId), eq(guestInvoices.status, 'issued')))
         .limit(1)
     )[0] ?? null;
 
@@ -168,7 +169,7 @@ export async function issueInvoiceForBooking(
     await db
       .select()
       .from(guestInvoices)
-      .where(eq(guestInvoices.bookingId, bookingId))
+      .where(and(eq(guestInvoices.bookingId, bookingId), eq(guestInvoices.status, 'issued')))
       .limit(1)
   )[0];
   if (existing) return existing;
@@ -265,7 +266,7 @@ export async function issueInvoiceForBooking(
       await db
         .select()
         .from(guestInvoices)
-        .where(eq(guestInvoices.bookingId, bookingId))
+        .where(and(eq(guestInvoices.bookingId, bookingId), eq(guestInvoices.status, 'issued')))
         .limit(1)
     )[0];
     if (raced) return raced;

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, eq, ne } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
-import { bookings, tenantInvoiceSettings, type Database } from '@cm/db';
+import { bookings, guestInvoices, tenantInvoiceSettings, type Database } from '@cm/db';
 import {
   router,
   tenantProcedure,
@@ -202,6 +202,24 @@ export const invoicesRouter = router({
         }
         throw e;
       }
+    }),
+
+  /** Storno: void an issued invoice. Frees the booking for a corrected re-issue. */
+  voidInvoice: adminProcedure
+    .input(z.object({ invoiceId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await ctx.db
+        .update(guestInvoices)
+        .set({ status: 'void', updatedAt: new Date() })
+        .where(
+          and(
+            eq(guestInvoices.id, input.invoiceId),
+            eq(guestInvoices.tenantId, ctx.tenantId!),
+          ),
+        )
+        .returning({ id: guestInvoices.id });
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND' });
+      return { ok: true };
     }),
 
   // ── Public portal (no auth) ──────────────────────────────────────────────
