@@ -239,6 +239,13 @@
       "when": 1781289446958,
       "tag": "0033_dapper_silver_sable",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1781294497872,
+      "tag": "0034_smart_emma_frost",
+      "breakpoints": true
     }
   ]
 }

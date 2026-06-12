@@ -1,0 +1,1 @@
+ALTER TABLE "bookings" ADD COLUMN "guest_messages_read_at" timestamp with time zone;

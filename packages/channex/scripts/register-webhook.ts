@@ -29,7 +29,10 @@ if (!url || !apiKey || !secret) {
 }
 
 const callbackUrl = `${workerBase}/api/webhooks/channex/${secret}`;
-const eventMask = BOOKING_EVENTS.join(',');
+// Booking events + `message` so the in-app inbox syncs a thread on demand for
+// ANY booking (incl. far-future arrivals the cron window doesn't cover).
+const desiredEvents = [...BOOKING_EVENTS, 'message'];
+const eventMask = desiredEvents.join(',');
 
 const channex = createChannexClient({ baseUrl: url, apiKey });
 
@@ -39,13 +42,24 @@ for (const w of existing) {
   console.log(`  - ${w.id}  ${w.attributes?.callback_url}  events=${w.attributes?.event_mask}  active=${w.attributes?.is_active}`);
 }
 
-// Idempotency: if a webhook already points to the same callback URL, skip create.
+// Idempotent: if a webhook already points to our callback URL, ensure its
+// event_mask covers all desired events (adding `message` to legacy ones).
 const dup = existing.find((w) => w.attributes?.callback_url === callbackUrl);
 if (dup) {
-  console.log(`\n✓ Webhook already registered → ${dup.id}`);
-  console.log(`  callback: ${callbackUrl}`);
-  console.log(`  events:   ${dup.attributes?.event_mask}`);
-  console.log(`  active:   ${dup.attributes?.is_active}`);
+  const current = (dup.attributes?.event_mask ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const missing = desiredEvents.filter((e) => !current.includes(e) && !current.includes('*'));
+  if (missing.length === 0) {
+    console.log(`\n✓ Webhook already covers all events → ${dup.id}`);
+    console.log(`  events: ${dup.attributes?.event_mask}`);
+    process.exit(0);
+  }
+  const merged = Array.from(new Set([...current, ...desiredEvents])).join(',');
+  console.log(`\nUpdating webhook ${dup.id} — adding: ${missing.join(', ')}`);
+  const updated = await channex.webhooks.update(dup.id, { event_mask: merged, is_active: true });
+  console.log(`✓ Webhook updated → events: ${updated.attributes?.event_mask}`);
   process.exit(0);
 }
 

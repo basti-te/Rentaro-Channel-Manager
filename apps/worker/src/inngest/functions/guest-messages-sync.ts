@@ -112,8 +112,10 @@ async function sync(hintChannexBookingId?: string): Promise<GuestMsgSyncResult> 
       .limit(1);
   } else {
     // Active window: guests staying now or arriving within a week.
-    const floor = new Date(Date.now() - 1 * 86_400_000).toISOString().slice(0, 10);
-    const horizon = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+    // Inbox safety net: recently-departed (post-stay messages) through the next
+    // fortnight. Far-future + real-time threads come via the `message` webhook.
+    const floor = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+    const horizon = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
     rows = await db
       .select(cols)
       .from(bookings)

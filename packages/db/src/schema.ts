@@ -445,6 +445,9 @@ export const bookings = pgTable(
      *  Persisted so a correction also drives the guest-portal invoice. */
     invoiceGrossOverrideCents: bigint('invoice_gross_override_cents', { mode: 'bigint' }),
     invoiceCleaningOverrideCents: bigint('invoice_cleaning_override_cents', { mode: 'bigint' }),
+    /** When the operator last read this booking's guest-message thread. Unread =
+     *  inbound messages newer than this. NULL = never read. */
+    guestMessagesReadAt: timestamp('guest_messages_read_at', { withTimezone: true }),
 
     /** If true, the review-automation job (Phase 11) sends a review request
      *  3 days after checkout. Per-booking opt-out for difficult guests. */
