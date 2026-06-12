@@ -24,6 +24,7 @@ import { Switch } from '../../components/ui/Switch';
 import { formatMoney } from '../../lib/format-money';
 import { trpc } from '../../lib/trpc';
 import type { BookingSource } from './BookingBlock';
+import { InvoiceSection } from './InvoiceSection';
 
 interface Booking {
   id: string;
@@ -356,6 +357,11 @@ export function BookingDetailSheet({
                 </div>
               )}
             </Section>
+          )}
+
+          {/* Invoice (guest-facing Rechnung) */}
+          {booking.source !== 'block' && (
+            <InvoiceSection bookingId={booking.id} guestName={booking.guestName} />
           )}
 
           {/* External booking metadata */}

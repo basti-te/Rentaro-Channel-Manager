@@ -14,6 +14,7 @@ import {
   Star,
   Users,
   Bell,
+  FileText,
   LogOut,
   ChevronRight,
   type LucideIcon,
@@ -49,6 +50,7 @@ const NAV: NavItem[] = [
   { to: '/reviews',    label: 'Bewertungen',     icon: Star },
   { to: '/teammates',  label: 'Teammates',       icon: Users },
   { to: '/notifications', label: 'Benachrichtigungen', icon: Bell },
+  { to: '/rechnungen', label: 'Rechnungen',      icon: FileText },
   { to: '/settings',   label: 'Settings',        icon: Settings },
 ];
 

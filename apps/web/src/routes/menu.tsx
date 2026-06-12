@@ -10,6 +10,7 @@ import {
   Star,
   Users,
   Bell,
+  FileText,
   ChevronRight,
   type LucideIcon,
 } from 'lucide-react';
@@ -39,6 +40,7 @@ const LINKS: MenuLink[] = [
   { to: '/teammates',  label: 'Teammates',    icon: Users,      description: 'Cleaner / interne SMS-Empfänger' },
   { to: '/ki-gastnachrichten', label: 'KI-Gastnachrichten', icon: Sparkles, description: 'KI-Antworten an Gäste + Apartment-Wissen' },
   { to: '/notifications', label: 'Benachrichtigungen', icon: Bell, description: 'E-Mail-Alerts bei Buchungen & Fehlern' },
+  { to: '/rechnungen', label: 'Rechnungen',    icon: FileText,  description: 'Gäste-Rechnungen + Self-Service-Portal' },
   { to: '/settings',   label: 'Einstellungen',icon: Settings,   description: 'Account, Abo, Preis-Quelle, SMS' },
 ];
 
