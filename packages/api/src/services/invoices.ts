@@ -96,12 +96,17 @@ const toNum = (x: bigint | number | null | undefined): number | null =>
 export function invoiceBasisForBooking(
   b: {
     source: string;
+    priceCents: bigint | number | null;
     nightlyRateCents: bigint | number | null;
     cleaningFeeCents: bigint | number | null;
     rawPayload?: unknown;
   },
   nights: number,
+  cityTaxRateBp: number,
 ): InvoiceBasis {
+  const cityRate = cityTaxRateBp / 10_000;
+
+  // Native bookings: we stored the line items ourselves.
   if (!OTA_SOURCES.has(b.source)) {
     const nightly = toNum(b.nightlyRateCents) ?? 0;
     const lodging = nightly * Math.max(1, nights);
@@ -111,12 +116,38 @@ export function invoiceBasisForBooking(
       confident: lodging > 0,
     };
   }
-  const lodging = daysSumCents(b.rawPayload);
-  return {
-    lodgingGrossCents: lodging ?? 0,
-    cleaningGrossCents: 0,
-    confident: lodging != null && lodging > 0,
-  };
+
+  const amount = toNum(b.priceCents);
+  const days = daysSumCents(b.rawPayload);
+
+  // Airbnb: `amount` is the PAYOUT (not the guest-paid gross) and the cleaning
+  // fee isn't separable — invoice the per-night lodging only (best effort).
+  if (b.source === 'airbnb') {
+    const lodging = days ?? 0;
+    return { lodgingGrossCents: lodging, cleaningGrossCents: 0, confident: lodging > 0 };
+  }
+
+  // Booking.com / Expedia / other: `amount` IS the guest-paid GROSS. Reconstruct
+  // so the invoice TOTAL equals it exactly: lodging = Σ per-night prices, city
+  // tax = rate × lodging, cleaning = the remainder (amount − lodging − cityTax).
+  // This is what fixes "Brutto too low" — the cleaning fee Channex bundles into
+  // `amount` but doesn't break out for us.
+  if (amount != null && amount > 0) {
+    let lodging = days != null && days > 0 ? days : Math.round(amount / (1 + cityRate));
+    const cityTax = Math.round(lodging * cityRate);
+    let cleaning = amount - lodging - cityTax;
+    if (cleaning < 0) {
+      // Lodging + city tax already ≥ the paid amount → nothing separable as
+      // cleaning; fold everything into lodging so the total still reconciles.
+      lodging = Math.round(amount / (1 + cityRate));
+      cleaning = 0;
+    }
+    return { lodgingGrossCents: lodging, cleaningGrossCents: cleaning, confident: true };
+  }
+
+  // No reliable amount → fall back to per-night lodging only.
+  const lodging = days ?? 0;
+  return { lodgingGrossCents: lodging, cleaningGrossCents: 0, confident: lodging > 0 };
 }
 
 /** "606,62 EUR" — matches the operator's invoice number/currency format. */

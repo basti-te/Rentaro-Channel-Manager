@@ -69,6 +69,7 @@ async function loadContext(db: Database, tenantId: string, bookingId: string) {
         checkin: bookings.checkin,
         checkout: bookings.checkout,
         currency: bookings.currency,
+        priceCents: bookings.priceCents,
         nightlyRateCents: bookings.nightlyRateCents,
         cleaningFeeCents: bookings.cleaningFeeCents,
         rawPayload: bookings.rawPayload,
@@ -127,15 +128,15 @@ export async function previewInvoice(
   if (bk.source === 'block') return { confident: false, reason: 'block', ...base };
 
   const nights = nightsBetween(bk.checkin, bk.checkout);
-  const basis = invoiceBasisForBooking(bk, nights);
-  if (!basis.confident) {
-    return { confident: false, reason: 'no_amount', ...base, nights };
-  }
   const cfg = {
     vatMode: (settings?.vatMode ?? 'regular') as 'regular' | 'kleinunternehmer',
     vatRateBp: settings?.vatRateBp ?? 700,
     cityTaxRateBp: settings?.cityTaxRateBp ?? 500,
   };
+  const basis = invoiceBasisForBooking(bk, nights, cfg.cityTaxRateBp);
+  if (!basis.confident) {
+    return { confident: false, reason: 'no_amount', ...base, nights };
+  }
   const breakdown = computeInvoiceBreakdown(
     basis.lodgingGrossCents,
     basis.cleaningGrossCents,
@@ -180,7 +181,7 @@ export async function issueInvoiceForBooking(
   if (bk.source === 'block') throw new InvoiceIssueError('block');
 
   const nights = nightsBetween(bk.checkin, bk.checkout);
-  const basis = invoiceBasisForBooking(bk, nights);
+  const basis = invoiceBasisForBooking(bk, nights, settings.cityTaxRateBp);
   if (!basis.confident) throw new InvoiceIssueError('no_amount');
 
   const b = computeInvoiceBreakdown(basis.lodgingGrossCents, basis.cleaningGrossCents, {
