@@ -10,9 +10,11 @@ export class WebhooksAPI {
   constructor(private readonly http: ChannexHttpClient) {}
 
   async list() {
+    // High limit so a single call returns ALL webhooks (per-property PriceLabs
+    // ones + our worker webhook), not just the first page of 10.
     const raw = await this.http.request({
       method: 'GET',
-      path: '/webhooks',
+      path: '/webhooks?pagination[limit]=100',
     });
     const parsed = ListResponse.parse(raw);
     return parsed.data ?? [];

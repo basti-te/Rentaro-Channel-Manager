@@ -36,10 +36,13 @@ const eventMask = desiredEvents.join(',');
 
 const channex = createChannexClient({ baseUrl: url, apiKey });
 
+/** Never print the webhook secret (it lives in the callback URL path). */
+const redact = (u: string | null | undefined) => (u ?? '').replace(secret, '***');
+
 const existing = await channex.webhooks.list();
 console.log(`Existing webhooks: ${existing.length}`);
 for (const w of existing) {
-  console.log(`  - ${w.id}  ${w.attributes?.callback_url}  events=${w.attributes?.event_mask}  active=${w.attributes?.is_active}`);
+  console.log(`  - ${w.id}  ${redact(w.attributes?.callback_url)}  events=${w.attributes?.event_mask}  active=${w.attributes?.is_active}`);
 }
 
 // Idempotent: if a webhook already points to our callback URL, ensure its
@@ -63,7 +66,7 @@ if (dup) {
   process.exit(0);
 }
 
-console.log(`\nCreating webhook → ${callbackUrl}\n  events: ${eventMask}\n`);
+console.log(`\nCreating webhook → ${redact(callbackUrl)}\n  events: ${eventMask}\n`);
 const created = await channex.webhooks.create({
   callback_url: callbackUrl,
   event_mask: eventMask,
@@ -75,6 +78,6 @@ const created = await channex.webhooks.create({
 
 console.log(`✓ Webhook created`);
 console.log(`  id:       ${created.id}`);
-console.log(`  callback: ${created.attributes?.callback_url}`);
+console.log(`  callback: ${redact(created.attributes?.callback_url)}`);
 console.log(`  events:   ${created.attributes?.event_mask}`);
 console.log(`  active:   ${created.attributes?.is_active}`);
