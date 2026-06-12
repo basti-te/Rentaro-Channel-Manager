@@ -1,7 +1,54 @@
 # Session Handoff — Pickup Notes
 
-_Last sync: **AI guest-reply assistant + metering** session (2026-06-10).
-Everything below is committed + pushed; git HEAD `491a0de` on `main`._
+_Last sync: **Guest self-service invoices** session (2026-06-12).
+Everything below is committed + pushed; git HEAD `27a9e45` on `main`._
+
+**Shipped this session (2026-06-12, all on `main`):** the **guest invoice
+feature** (Phases 0–3) — see **ADR 0013**. A guest enters their last name +
+travel dates on a public portal and downloads a proper accommodation invoice
+showing the **actually-paid** price.
+
+- **Phase 0** — persist `bookings.ota_commission_cents` (mig 0027);
+  `services/booking-amounts.ts` resolves real Brutto/Provision/Auszahlung per OTA
+  (Airbnb `amount` = payout → gross rebuilt from `rooms[].days`); booking detail
+  sheet shows all three.
+- **Phase 1** — `tenant_invoice_settings` + `guest_invoices` (mig 0028);
+  `computeInvoiceBreakdown` (7% VAT, **city tax = 5% of GROSS lodging only**,
+  matches the operator's real invoice cent-for-cent); idempotent issuing with
+  transactional `RE-<n>` numbering + frozen snapshot; **pdfkit** PDF in the worker
+  at `GET /api/invoices/<token>.pdf` (1:1 the CITY APARTMENTS ESSEN layout);
+  operator config page `/rechnungen` + a per-booking "Rechnung" block.
+- **Phase 2** — public portal `/rechnung/:slug` (`invoices.publicLookup` /
+  `publicIssue`; name + both dates, rate-limited, generic errors).
+- **Phase 3** — Storno: partial unique index (`booking_id WHERE status='issued'`,
+  mig 0029) + `voidInvoice` → corrected re-issue.
+
+**Operator action items — invoices (do these to go live):**
+1. **Apply migrations 0027 + 0028 + 0029** to PROD: `pnpm --filter @cm/db
+   migrate:tables-only`. ⚠️ The code already selects `ota_commission_cents`, so
+   this must run **before** the worker/web deploy or booking queries break.
+2. **Enable RLS on the two new backend tables** (migrate:tables-only skips
+   post-migrate): run in prod SQL —
+   `ALTER TABLE public.tenant_invoice_settings ENABLE ROW LEVEL SECURITY;`
+   `ALTER TABLE public.guest_invoices ENABLE ROW LEVEL SECURITY;`
+3. **Configure** `/rechnungen` → click **"CITY APARTMENTS ESSEN-Vorlage"** →
+   check the USt-IdNr (DE343901469) + set the **start invoice number** so it
+   doesn't collide with past manual invoices → **enable** the portal (auto-mints
+   the slug) → Speichern. Share the portal link only when ready (until enabled,
+   nobody can use it).
+4. **Test:** open a non-Airbnb booking → "Rechnung erstellen" → download; then
+   the portal with that guest's name + dates. (Airbnb payout-only bookings are
+   intentionally suppressed — gross not reconstructable.)
+
+_(Earlier this session, pre-invoices: the AI guest-reply assistant was metered to
+Stripe and consolidated into a dedicated "KI-Gastnachrichten" page. Those are
+live on `main` too.)_
+
+---
+
+## Prior sync (2026-06-10) — AI guest-reply assistant + metering
+
+_Last sync before that: HEAD `491a0de`._
 
 **Shipped this session (2026-06-10, all on `main`):** the **AI guest-reply
 assistant** — an opt-in, paid add-on that drafts replies to OTA guest messages
