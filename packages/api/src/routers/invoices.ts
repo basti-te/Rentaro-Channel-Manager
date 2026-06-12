@@ -1,9 +1,15 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
-import { tenantInvoiceSettings } from '@cm/db';
-import { router, tenantProcedure, adminProcedure, editorProcedure } from '../trpc';
+import { bookings, tenantInvoiceSettings, type Database } from '@cm/db';
+import {
+  router,
+  tenantProcedure,
+  adminProcedure,
+  editorProcedure,
+  publicProcedure,
+} from '../trpc';
 import {
   previewInvoice,
   issueInvoiceForBooking,
@@ -45,6 +51,82 @@ const settingsInput = z.object({
   publicSlug: z.string().trim().min(8).max(64).optional(),
   lookupRequireCode: z.boolean().optional(),
 });
+
+// ── Public lookup (unauthenticated) ──────────────────────────────────────────
+// In-memory per-portal rate limit. The worker is single-instance, so this is a
+// sufficient backstop against name+date guessing; generic errors never reveal
+// whether the name or the dates were wrong (no enumeration).
+const attempts = new Map<string, { count: number; resetAt: number }>();
+function rateLimit(key: string, max = 20, windowMs = 600_000): boolean {
+  const now = Date.now();
+  const e = attempts.get(key);
+  if (!e || e.resetAt < now) {
+    attempts.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (e.count >= max) return false;
+  e.count += 1;
+  return true;
+}
+
+const lookupInput = z.object({
+  slug: z.string().min(8).max(64),
+  lastName: z.string().trim().min(2).max(120),
+  checkin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  checkout: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  code: z.string().trim().max(60).optional(),
+});
+
+/**
+ * Resolve a booking from a public lookup. Requires the portal slug (→ tenant) +
+ * the last name as a substring of the guest name + BOTH dates exact, and the OTA
+ * code when the tenant requires it. Returns null on no match OR ambiguity (never
+ * leaks which field was wrong).
+ */
+async function resolvePublicBooking(db: Database, input: z.infer<typeof lookupInput>) {
+  const settings = (
+    await db
+      .select({
+        tenantId: tenantInvoiceSettings.tenantId,
+        requireCode: tenantInvoiceSettings.lookupRequireCode,
+      })
+      .from(tenantInvoiceSettings)
+      .where(
+        and(
+          eq(tenantInvoiceSettings.publicSlug, input.slug),
+          eq(tenantInvoiceSettings.enabled, true),
+        ),
+      )
+      .limit(1)
+  )[0];
+  if (!settings) return null;
+
+  const rows = await db
+    .select({
+      id: bookings.id,
+      guestName: bookings.guestName,
+      code: bookings.otaConfirmationCode,
+    })
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.tenantId, settings.tenantId),
+        eq(bookings.checkin, input.checkin),
+        eq(bookings.checkout, input.checkout),
+        ne(bookings.status, 'cancelled'),
+        ne(bookings.source, 'block'),
+      ),
+    );
+
+  const ln = input.lastName.toLowerCase();
+  let matches = rows.filter((r) => (r.guestName ?? '').toLowerCase().includes(ln));
+  if (settings.requireCode) {
+    const code = (input.code ?? '').toLowerCase();
+    matches = code ? matches.filter((r) => (r.code ?? '').toLowerCase() === code) : [];
+  }
+  if (matches.length !== 1) return null;
+  return { tenantId: settings.tenantId, bookingId: matches[0]!.id, guestName: matches[0]!.guestName };
+}
 
 export const invoicesRouter = router({
   /** Operator config (null until first save). */
@@ -114,6 +196,56 @@ export const invoicesRouter = router({
           email: input.recipient.email || null,
         });
         return { number: inv.number, token: inv.token };
+      } catch (e) {
+        if (e instanceof InvoiceIssueError) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: e.reason });
+        }
+        throw e;
+      }
+    }),
+
+  // ── Public portal (no auth) ──────────────────────────────────────────────
+  publicLookup: publicProcedure.input(lookupInput).mutation(async ({ ctx, input }) => {
+    if (!rateLimit(`lookup:${input.slug}`)) {
+      throw new TRPCError({
+        code: 'TOO_MANY_REQUESTS',
+        message: 'Zu viele Versuche. Bitte später erneut.',
+      });
+    }
+    const m = await resolvePublicBooking(ctx.db, input);
+    if (!m) return { found: false as const };
+    const p = await previewInvoice(ctx.db, m.tenantId, m.bookingId);
+    return {
+      found: true as const,
+      guestName: m.guestName,
+      apartmentName: p.apartmentName,
+      nights: p.nights,
+      currency: p.currency,
+      confident: p.confident,
+      grossCents: p.breakdown?.totalGrossCents ?? null,
+      existing: p.existing,
+    };
+  }),
+
+  publicIssue: publicProcedure
+    .input(lookupInput.extend({ recipient: recipientInput }))
+    .mutation(async ({ ctx, input }) => {
+      if (!rateLimit(`issue:${input.slug}`)) {
+        throw new TRPCError({
+          code: 'TOO_MANY_REQUESTS',
+          message: 'Zu viele Versuche. Bitte später erneut.',
+        });
+      }
+      const m = await resolvePublicBooking(ctx.db, input);
+      if (!m) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Keine passende Buchung gefunden.' });
+      }
+      try {
+        const inv = await issueInvoiceForBooking(ctx.db, m.tenantId, m.bookingId, {
+          ...input.recipient,
+          email: input.recipient.email || null,
+        });
+        return { token: inv.token, number: inv.number };
       } catch (e) {
         if (e instanceof InvoiceIssueError) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: e.reason });

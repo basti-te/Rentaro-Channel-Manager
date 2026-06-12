@@ -10,6 +10,7 @@ import { LoginPage } from './routes/login';
 import { LandingPage } from './routes/landing';
 import { OnboardingPage } from './routes/onboarding';
 import { PublicCleaningCalendarPage } from './routes/cleaning-public';
+import { PublicInvoicePage } from './routes/invoice-public';
 import { ImpressumPage } from './routes/impressum';
 import { DatenschutzPage } from './routes/datenschutz';
 import { DashboardLayout } from './routes/_dashboard';
@@ -68,6 +69,13 @@ const publicCleaningCalendarRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/cal/$slug',
   component: PublicCleaningCalendarPage,
+});
+
+/** Public guest invoice portal. No auth — slug → tenant. */
+const publicInvoiceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/rechnung/$slug',
+  component: PublicInvoicePage,
 });
 
 /** Public — legal notice, reachable without authentication. */
@@ -191,6 +199,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   onboardingRoute,
   publicCleaningCalendarRoute,
+  publicInvoiceRoute,
   impressumRoute,
   datenschutzRoute,
   dashboardRoute.addChildren([
