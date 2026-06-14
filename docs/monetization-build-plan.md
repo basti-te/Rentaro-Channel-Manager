@@ -134,4 +134,30 @@ billingExempt → premium-äquivalent, ohne Stripe-Gates/Metering-Charge
 3. **Downgrade/Kündigung:** **Free als Auffangbecken** — Daten bleiben, nur Kalender aktiv, Bearbeitung gesperrt. ✅
 4. **14-Tage-Premium-Trial bleibt** zusätzlich zum Free-Köder: direkte Tester starten mit vollem Premium-Trial (bestehender `trialEndsAt`-Mechanismus); der Gratis-Köder ist der calendar-only-Pfad mit 12-Monats-Konversion. Beide Pfade koexistieren. ✅
 
-**→ Bauplan final. Warte auf grünes Licht zum Start von Phase 0.**
+**→ Bauplan final. Grünes Licht erhalten — Umsetzung läuft.**
+
+---
+
+## 7. Stripe Live — angelegte Objekte (Phase 0)
+
+Konto: **leopards.de** (`acct_1IpzKACjM26RKIaH`), livemode. Preise sind **Brutto (`tax_behavior=inclusive`)**, volume-tiered (Mengenrabatt nativ: 9/8,10/7,20/6,30/5,85 € bzw. 19/17,10/15,20/13,30/12,35 € je Listing nach Menge).
+
+**Neue Tier-Preise (im Code als Env-Var referenzieren):**
+| Env-Var (neu) | Stripe Price ID | Tier / Intervall |
+|---|---|---|
+| `STRIPE_PRICE_BASIC_MONTHLY` | `price_1TiKg4CjM26RKIaHP3l4CAUM` | Basic / monatlich |
+| `STRIPE_PRICE_BASIC_ANNUAL` | `price_1TiKg8CjM26RKIaH0WQzgkBZ` | Basic / jährlich |
+| `STRIPE_PRICE_PREMIUM_MONTHLY` | `price_1TiKgACjM26RKIaHRWTnTgF5` | Premium / monatlich |
+| `STRIPE_PRICE_PREMIUM_ANNUAL` | `price_1TiKgDCjM26RKIaH4bTA8OJG` | Premium / jährlich |
+
+Produkte: Basic `prod_Uhk93DcdQe94AX` · Premium `prod_UhkA1PezQL2lTh`.
+
+**Bestehend, bleibt (Metering):** `STRIPE_PRICE_AI_METERED=price_1Tgh0PCjM26RKIaHfAa5RTrY` (0,10 €/Antwort) · `STRIPE_PRICE_SMS_METERED=price_1TeGFvCjM26RKIaHhB6edU46`.
+
+**Alt, wird in Phase 2 stillgelegt** (base+property-Modell): `price_1TZ6x1…w02R9q6i` (Base mtl), `price_1TZ6x1…0yNLlAP5` (Base jährl), die per-Apartment-Preise (`price_1TZ6x7…`). Erst beim Checkout-Umbau archivieren — nicht vorher (laufender Checkout referenziert sie noch).
+
+### Operator-Aufgaben (kann ich nicht selbst)
+1. **Env-Vars setzen** (die 4 neuen oben) in `.env.local` + Railway (Worker) + Vercel (Web). Der Code liest sie ab Phase 2.
+2. **Stripe Tax aktivieren** im Dashboard (Tax → Settings; DE-Registrierung), damit MwSt automatisch berechnet wird und B2B-Reverse-Charge greift. Einmalig.
+
+One-Time-Produkte für die Einmal-Services folgen in **Phase 4** (wenn der Checkout-Code sie konsumiert).
