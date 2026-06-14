@@ -34,6 +34,13 @@ import {
 
 export const planEnum = pgEnum('plan', ['free', 'starter', 'pro', 'enterprise']);
 
+/**
+ * Customer-facing packaging tier. Supersedes the legacy `plan` enum (kept for
+ * back-compat until all reads move to `tier`). Free = calendar-only bait;
+ * Basic = automation; Premium = +AI, dynamic pricing, SMS, invoices, stats.
+ */
+export const tierEnum = pgEnum('tier', ['free', 'basic', 'premium']);
+
 export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'trialing',
   'active',
@@ -139,6 +146,8 @@ export const tenants = pgTable('tenants', {
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
   plan: planEnum('plan').notNull().default('free'),
+  /** Customer-facing packaging tier (authoritative for entitlements). */
+  tier: tierEnum('tier').notNull().default('free'),
   status: text('status').notNull().default('active'), // active, suspended, deleted
   stripeCustomerId: text('stripe_customer_id').unique(),
   defaultTimezone: text('default_timezone').notNull().default('Europe/Berlin'),
@@ -214,6 +223,18 @@ export const tenants = pgTable('tenants', {
   billingExempt: boolean('billing_exempt').notNull().default(false),
 
   /**
+   * Free-tier lifecycle (the "1 year free" bait). A card is captured on start
+   * via SetupIntent; the tier auto-converts to Basic after 12 months unless
+   * cancelled.
+   *   - freeStartedAt          : when the free tier began (card captured)
+   *   - freeConvertsAt         : scheduled auto-conversion instant (start + 12mo)
+   *   - defaultPaymentMethodId : Stripe pm_* charged on conversion / upsells
+   */
+  freeStartedAt: timestamp('free_started_at', { withTimezone: true }),
+  freeConvertsAt: timestamp('free_converts_at', { withTimezone: true }),
+  defaultPaymentMethodId: text('default_payment_method_id'),
+
+  /**
    * First-time setup wizard completion marker. NULL = user just signed up,
    * routes redirect to /onboarding. Set on wizard finish (or on legacy
    * tenants via the migration) so they go straight to /calendar.
@@ -269,6 +290,8 @@ export const subscriptions = pgTable(
     /** Stripe Price ID for the **base** subscription item. */
     stripePriceId: text('stripe_price_id'),
     plan: planEnum('plan').notNull(),
+    /** Customer-facing tier mirrored from the Stripe product. */
+    tier: tierEnum('tier').notNull().default('free'),
     status: subscriptionStatusEnum('status').notNull(),
     /** Per-property metered quantity (matches the property line item). */
     quantity: integer('quantity').notNull().default(1),

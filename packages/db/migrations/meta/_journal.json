@@ -246,6 +246,13 @@
       "when": 1781294497872,
       "tag": "0034_smart_emma_frost",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1781468644926,
+      "tag": "0035_ancient_puff_adder",
+      "breakpoints": true
     }
   ]
 }
