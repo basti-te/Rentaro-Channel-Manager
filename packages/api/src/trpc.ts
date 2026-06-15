@@ -89,13 +89,32 @@ const requireRole = (allowed: Array<NonNullable<AppContext['role']>>) =>
  * straight through. Reads (tenantProcedure) are NOT gated so a locked-out
  * tenant can still load `/settings/billing` and pay.
  */
-import { assertActiveSubscription } from './services/plan-guard';
+import { assertActiveSubscription, resolveAccess } from './services/plan-guard';
+import type { Feature } from './services/entitlements';
 
 const planGuardMiddleware = middleware(async ({ ctx, next }) => {
   if (!ctx.tenantId) throw new TRPCError({ code: 'UNAUTHORIZED' });
   await assertActiveSubscription(ctx.db, ctx.tenantId);
   return next({ ctx });
 });
+
+/**
+ * Feature-gate middleware factory. Throws FEATURE_LOCKED:<feature>:<tier> when
+ * the tenant's tier doesn't unlock `feature`. Compose ON TOP of a plan-gated
+ * base procedure (editor/admin/owner) so both lockout and feature gating apply.
+ */
+export const requireFeature = (feature: Feature) =>
+  middleware(async ({ ctx, next }) => {
+    if (!ctx.tenantId) throw new TRPCError({ code: 'UNAUTHORIZED' });
+    const access = await resolveAccess(ctx.db, ctx.tenantId);
+    if (!access.features.includes(feature)) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: `FEATURE_LOCKED:${feature}:${access.tier}`,
+      });
+    }
+    return next({ ctx });
+  });
 
 /** Authed but tenant-agnostic — for onboarding, account, "me" endpoints. */
 export const authedProcedure = publicProcedure.use(authMiddleware);

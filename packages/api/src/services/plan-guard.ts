@@ -13,6 +13,7 @@ import { TRPCError } from '@trpc/server';
 import { desc, eq } from 'drizzle-orm';
 import { subscriptions, tenants } from '@cm/db';
 import type { Database } from '@cm/db';
+import { featuresForTier, type Tier, type Feature } from './entitlements';
 
 export type AccessReason =
   | 'exempt'
@@ -43,6 +44,10 @@ export interface AccessState {
    * this date). `null` for an open-ended subscription.
    */
   cancelAt: Date | null;
+  /** Packaging tier (entitlements axis). Exempt tenants resolve to 'premium'. */
+  tier: Tier;
+  /** Features unlocked at `tier` — convenience for the frontend UI. */
+  features: Feature[];
 }
 
 /**
@@ -56,7 +61,7 @@ export async function resolveAccess(
 ): Promise<AccessState> {
   const t = (
     await db
-      .select({ billingExempt: tenants.billingExempt })
+      .select({ billingExempt: tenants.billingExempt, tier: tenants.tier })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1)
@@ -65,12 +70,17 @@ export async function resolveAccess(
     return {
       ok: false, reason: 'no_subscription', trialEndsAt: null,
       status: null, subscribed: false, cancelAt: null,
+      tier: 'free', features: [],
     };
   }
+  // Effective entitlement tier: exempt workspaces get full access.
+  const tier: Tier = t.billingExempt ? 'premium' : t.tier;
+  const features = featuresForTier(tier);
+
   if (t.billingExempt) {
     return {
       ok: true, reason: 'exempt', trialEndsAt: null,
-      status: null, subscribed: false, cancelAt: null,
+      status: null, subscribed: false, cancelAt: null, tier, features,
     };
   }
 
@@ -86,29 +96,27 @@ export async function resolveAccess(
   if (!s) {
     return {
       ok: false, reason: 'no_subscription', trialEndsAt: null,
-      status: null, subscribed: false, cancelAt: null,
+      status: null, subscribed: false, cancelAt: null, tier, features,
     };
   }
   const trialEndsAt = s.trialEndsAt ?? null;
   const subscribed = !!s.stripeSubscriptionId;
   const cancelAt = s.cancelAt ?? null;
+  const base = { trialEndsAt, status: s.status, subscribed, cancelAt, tier, features };
 
   if (s.status === 'active') {
-    return { ok: true, reason: 'active', trialEndsAt, status: s.status, subscribed, cancelAt };
+    return { ok: true, reason: 'active', ...base };
   }
   if (s.status === 'trialing') {
     if (!trialEndsAt || trialEndsAt > new Date()) {
-      return { ok: true, reason: 'trialing', trialEndsAt, status: s.status, subscribed, cancelAt };
+      return { ok: true, reason: 'trialing', ...base };
     }
-    return { ok: false, reason: 'trial_expired', trialEndsAt, status: s.status, subscribed, cancelAt };
+    return { ok: false, reason: 'trial_expired', ...base };
   }
   return {
     ok: false,
     reason: (s.status as AccessReason) ?? 'no_subscription',
-    trialEndsAt,
-    status: s.status,
-    subscribed,
-    cancelAt,
+    ...base,
   };
 }
 

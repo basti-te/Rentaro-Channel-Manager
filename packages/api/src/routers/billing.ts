@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { tenants, users, memberships } from '@cm/db';
 import { router, tenantProcedure, billingProcedure } from '../trpc';
 import { resolveAccess } from '../services/plan-guard';
+import { limitsForTier } from '../services/entitlements';
 import {
   TRIAL_DAYS,
   getStripe,
@@ -36,6 +37,7 @@ export const billingRouter = router({
     )[0];
     return {
       ...access,
+      limits: limitsForTier(access.tier),
       billingExempt: t?.billingExempt ?? false,
       hasStripeCustomer: !!t?.stripeCustomerId,
       trialDaysTotal: TRIAL_DAYS,

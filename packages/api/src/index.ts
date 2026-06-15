@@ -104,6 +104,16 @@ export {
   type BookingNotificationContext,
 } from './services/notifications';
 export { isTemplateEnabledForBooking, isChannelApplicableToSource } from './services/scope';
+export {
+  hasFeature,
+  featuresForTier,
+  limitsForTier,
+  FEATURE_MIN_TIER,
+  TIER_LIMITS,
+  type Tier,
+  type Feature,
+  type TierLimits,
+} from './services/entitlements';
 export { resolveCustomVars, CUSTOM_VAR_KEY_RE } from './services/custom-vars';
 
 // Shared cleaning helpers — reused by the worker's cleaning-dispatch cron.
